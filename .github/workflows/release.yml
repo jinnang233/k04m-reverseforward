@@ -173,7 +173,7 @@ jobs:
 
           cat THIRD_PARTY/NEOFORGE_LICENSE >> release-artifacts/THIRD_PARTY_NOTICES.md
 
-          cat >> release-artifacts/THIRD_PARTY_NOTICES.md <<NOTICE_TXT
+          
 
           sed -i 's/^          //' release-artifacts/THIRD_PARTY_NOTICES.md
           cp release-artifacts/THIRD_PARTY_NOTICES.md legal/META-INF/THIRD-PARTY-NOTICES.md
