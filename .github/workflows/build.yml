@@ -56,3 +56,35 @@ jobs:
 
       - name: Build NeoForge
         run: gradle -p neoforge build --no-daemon
+
+      - name: Collect build artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-artifacts
+
+          find build/libs -maxdepth 1 -type f -name "*.jar" \
+            ! -name "*-sources.jar" \
+            ! -name "*-dev.jar" \
+            -exec cp {} build-artifacts/ \;
+          find neoforge/build/libs -maxdepth 1 -type f -name "*.jar" \
+            ! -name "*-sources.jar" \
+            ! -name "*-dev.jar" \
+            -exec cp {} build-artifacts/ \;
+
+          jars=(build-artifacts/*.jar)
+          if [ ${#jars[@]} -ne 2 ]; then
+            echo "Expected two build JARs, found ${#jars[@]}"
+            ls -la build-artifacts
+            exit 1
+          fi
+
+          ls -la build-artifacts
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: k04m-reverse-forward-${{ github.sha }}
+          path: build-artifacts/*.jar
+          if-no-files-found: error
+          compression-level: 0

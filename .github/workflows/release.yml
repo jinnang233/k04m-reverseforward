@@ -1,0 +1,202 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check OpenSSL version
+        shell: bash
+        run: docker run --rm alpine/openssl version
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          gradle-version: "9.5.1"
+
+      - name: Download latest Krypt04Mcg JAR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p libs
+
+          mapfile -t jar_urls < <(
+            gh api repos/jinnang233/Krypt04Mcg/releases/latest \
+              --jq '.assets[] | .name as $name | select(($name | test("^krypt04mcg-[0-9].*\\.jar$")) and (($name | test("-(sources|dev)\\.jar$")) | not)) | .browser_download_url'
+          )
+
+          if [ "${#jar_urls[@]}" -ne 1 ]; then
+            echo "Expected exactly one Fabric Krypt04Mcg release JAR, found ${#jar_urls[@]}"
+            printf '%s\n' "${jar_urls[@]}"
+            exit 1
+          fi
+
+          curl --fail --location --retry 3 \
+            --output libs/Krypt04Mcg.jar \
+            "${jar_urls[0]}"
+          test -s libs/Krypt04Mcg.jar
+
+      - name: Build Fabric
+        run: gradle build --no-daemon
+
+      - name: Build NeoForge
+        run: gradle -p neoforge build --no-daemon
+
+      - name: Collect release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+
+          find build/libs -maxdepth 1 -type f -name "*.jar" \
+            ! -name "*-sources.jar" \
+            ! -name "*-dev.jar" \
+            -exec cp {} release-artifacts/ \;
+          find neoforge/build/libs -maxdepth 1 -type f -name "*.jar" \
+            ! -name "*-sources.jar" \
+            ! -name "*-dev.jar" \
+            -exec cp {} release-artifacts/ \;
+
+          jars=(release-artifacts/*.jar)
+          if [ ${#jars[@]} -ne 2 ]; then
+            echo "Expected two release JARs, found ${#jars[@]}"
+            ls -la release-artifacts
+            exit 1
+          fi
+
+          ls -la release-artifacts
+
+      - name: Generate snapshot tag
+        id: snapshot
+        shell: bash
+        run: |
+          echo "tag=snapshot-$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+          echo "name=Snapshot $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_OUTPUT"
+
+      - name: Scan release artifacts with VirusTotal
+        uses: crazy-max/ghaction-virustotal@936d8c5c00afe97d3d9a1af26d017cfdf26800a2 # v5
+        with:
+          vt_api_key: ${{ secrets.VT_API_KEY }}
+          files: |
+            release-artifacts/*.jar
+
+      - name: Generate release notes
+        shell: bash
+        env:
+          RELEASE_NAME: ${{ github.ref_type == 'tag' && github.ref_name || steps.snapshot.outputs.name }}
+        run: |
+          set -euo pipefail
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)"
+
+          {
+            echo "# ${RELEASE_NAME}"
+            echo
+            echo "## Changelog"
+            echo
+
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo "Changes since \`${PREVIOUS_TAG}\`:"
+              echo
+              git log "${PREVIOUS_TAG}..HEAD" --pretty=format:'- %s (%h)' || true
+            else
+              echo "No previous tag was found. Recent changes:"
+              echo
+              git log -20 --pretty=format:'- %s (%h)' || true
+            fi
+
+            echo
+            echo
+            echo "## Build Artifacts"
+            echo
+
+            for file in release-artifacts/*.jar; do
+              sha256="$(sha256sum "$file" | awk '{print $1}')"
+              filename="$(basename "$file")"
+
+              echo "### ${filename}"
+              echo
+              echo "- SHA256: \`${sha256}\`"
+              echo "- VirusTotal: https://www.virustotal.com/gui/file/${sha256}"
+              echo
+            done
+
+            echo "## Signature"
+            echo
+            echo "Each JAR is accompanied by a detached \`.sign\` signature."
+            echo "The public key is attached as \`public_key.pem\`."
+          } > RELEASE_NOTE.md
+
+          cat RELEASE_NOTE.md
+
+      - name: Sign release artifacts
+        shell: bash
+        env:
+          SIGN_PRIVATE_KEY: ${{ secrets.RELEASE_SIGN_KEY }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          trap 'rm -f private_key.pem; echo "Cleaned up private key."' EXIT
+          umask 077
+          printf '%s\n' "$SIGN_PRIVATE_KEY" > private_key.pem
+
+          files=(release-artifacts/*.jar)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No JAR files found to sign"
+            exit 1
+          fi
+
+          docker run --rm \
+            -v "$PWD:/work" \
+            -w /work \
+            alpine/openssl pkey \
+            -pubout \
+            -in /work/private_key.pem \
+            -out /work/public_key.pem
+
+          for file in "${files[@]}"; do
+            docker run --rm \
+              -v "$PWD:/work" \
+              -w /work \
+              alpine/openssl dgst \
+              -sign /work/private_key.pem \
+              -out "/work/${file}.sign" \
+              "/work/${file}"
+          done
+
+          rm -f private_key.pem
+          ls -la release-artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || steps.snapshot.outputs.tag }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || steps.snapshot.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          body_path: RELEASE_NOTE.md
+          files: |
+            release-artifacts/*.jar
+            release-artifacts/*.jar.sign
+            public_key.pem
