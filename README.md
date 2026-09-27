@@ -17,7 +17,7 @@ K04M Reverse Forward is a Minecraft client mod that provides encrypted, authenti
 Suppose Alice wants to expose a connection on her local `127.0.0.1:25570` to a service listening on Bob's local `127.0.0.1:8080`:
 
 1. Alice registers a route and invites Bob.
-2. Bob explicitly accepts the invitation. The authorization is bound to Alice's verified player identity and an unguessable route UUID.
+2. Bob explicitly accepts the invitation and may choose the local target port. The authorization is bound to Alice's verified player identity and an unguessable route UUID.
 3. Alice's client starts listening on `127.0.0.1:25570`.
 4. Each TCP connection arriving at that port opens a `KryptSocket` to Bob. After Bob verifies the player identity and route UUID, his client connects to its own `127.0.0.1:8080` and begins forwarding bytes in both directions.
 
@@ -41,7 +41,7 @@ All commands are client-side commands:
 /k04mrf register <name> <listenPort> <targetPort>
 /k04mrf invite <name> <player>
 /k04mrf invitations
-/k04mrf accept <invitationId>
+/k04mrf accept <invitationId> [targetPort]
 /k04mrf deny <invitationId>
 /k04mrf list
 /k04mrf stop <name>
@@ -51,7 +51,7 @@ All commands are client-side commands:
 /k04mrf help
 ```
 
-For `invitationId` and `routeId`, you may use the eight-character prefixes displayed by `/k04mrf invitations` or `/k04mrf list`. The command is rejected if the prefix is ambiguous.
+For `invitationId` and `routeId`, you may use the eight-character prefixes displayed by `/k04mrf invitations` or `/k04mrf list`. The command is rejected if the prefix is ambiguous. The port supplied during `register` is proposed to the invited player; they may accept it as-is or override it by supplying `targetPort` to `accept`.
 
 ### Example
 
@@ -65,7 +65,7 @@ Alice runs:
 Bob sees a message containing a short invitation ID and then runs the following command, using the displayed ID:
 
 ```text
-/k04mrf accept a1b2c3d4
+/k04mrf accept a1b2c3d4 8080
 ```
 
 After the acceptance confirmation is reliably delivered to Alice, her client listens on `127.0.0.1:25570`. TCP traffic sent to that address is handled by the application listening on Bob's `127.0.0.1:8080`.

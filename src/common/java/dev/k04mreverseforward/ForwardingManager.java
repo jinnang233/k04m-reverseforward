@@ -113,16 +113,30 @@ final class ForwardingManager {
     }
 
     int accept(String idText) {
+        return accept(idText, null);
+    }
+
+    int accept(String idText, int targetPort) {
+        return accept(idText, Integer.valueOf(targetPort));
+    }
+
+    private int accept(String idText, Integer targetPortOverride) {
         Invitation invitation = findInvitation(idText);
         if (invitation == null) return fail("Unknown or ambiguous invitation ID.");
+        int targetPort = targetPortOverride == null ? invitation.targetPort : targetPortOverride;
+        try {
+            ControlPacket.validatePort(targetPort);
+        } catch (IllegalArgumentException error) {
+            return fail(error.getMessage());
+        }
         invitations.remove(invitation.invitationId);
-        AllowedRoute route = new AllowedRoute(invitation.routeId, invitation.name, invitation.sender, invitation.targetPort);
+        AllowedRoute route = new AllowedRoute(invitation.routeId, invitation.name, invitation.sender, targetPort);
         allowedRoutes.put(route.routeId, route);
         try {
             save();
-            sendControl(invitation.sender, invitation.packet(ControlPacket.Type.ACCEPT),
+            sendControl(invitation.sender, invitation.packet(ControlPacket.Type.ACCEPT, targetPort),
                     "Accepted '" + invitation.name + "' from " + invitation.sender + ". Forwarded connections will reach 127.0.0.1:"
-                            + invitation.targetPort + ".");
+                            + targetPort + ".");
             return 1;
         } catch (RuntimeException | IOException error) {
             return fail("Acceptance was saved, but the response could not be sent: " + error.getMessage());
@@ -215,8 +229,9 @@ final class ForwardingManager {
         expireInvitations();
         if (invitations.isEmpty()) ReverseForward.message("No pending invitations.");
         invitations.values().forEach(invitation -> ReverseForward.message(shortId(invitation.invitationId) + ": "
-                + invitation.sender + " requests '" + invitation.name + "' -> 127.0.0.1:" + invitation.targetPort
-                + ". Accept with /k04mrf accept " + shortId(invitation.invitationId)));
+                + invitation.sender + " requests '" + invitation.name + "' -> proposed 127.0.0.1:" + invitation.targetPort
+                + ". Accept with /k04mrf accept " + shortId(invitation.invitationId)
+                + " [targetPort]"));
         return 1;
     }
 
@@ -267,18 +282,21 @@ final class ForwardingManager {
                 packet.listenPort(), packet.targetPort(), Instant.now());
         invitations.put(invitation.invitationId, invitation);
         ReverseForward.message(sender + " invites you to route '" + packet.name() + "' to your 127.0.0.1:"
-                + packet.targetPort() + ". Accept: /k04mrf accept " + shortId(packet.invitationId())
+                + packet.targetPort() + " (proposed). Accept or choose another local port: /k04mrf accept "
+                + shortId(packet.invitationId()) + " [targetPort]"
                 + "  Deny: /k04mrf deny " + shortId(packet.invitationId()));
     }
 
     private void receiveAccept(String sender, ControlPacket packet) throws IOException {
         Mapping mapping = mappingByRoute(packet.routeId());
         if (mapping == null || !mapping.peer.equalsIgnoreCase(sender) || !mapping.name.equals(packet.name())) return;
+        mapping.targetPort = packet.targetPort();
         mapping.accepted = true;
         mapping.enabled = true;
         save();
         startListener(mapping);
-        ReverseForward.message(sender + " accepted route '" + mapping.name + "'. Listening on 127.0.0.1:" + mapping.listenPort + ".");
+        ReverseForward.message(sender + " accepted route '" + mapping.name + "' with target 127.0.0.1:"
+                + mapping.targetPort + ". Listening on 127.0.0.1:" + mapping.listenPort + ".");
     }
 
     private void receiveReject(String sender, ControlPacket packet) throws IOException {
@@ -544,7 +562,7 @@ final class ForwardingManager {
         final UUID routeId;
         final String name;
         final int listenPort;
-        final int targetPort;
+        volatile int targetPort;
         volatile String peer;
         volatile boolean accepted;
         volatile boolean enabled;
@@ -569,6 +587,9 @@ final class ForwardingManager {
                               int listenPort, int targetPort, Instant receivedAt) {
         ControlPacket packet(ControlPacket.Type type) {
             return new ControlPacket(type, invitationId, routeId, name, listenPort, targetPort);
+        }
+        ControlPacket packet(ControlPacket.Type type, int selectedTargetPort) {
+            return new ControlPacket(type, invitationId, routeId, name, listenPort, selectedTargetPort);
         }
     }
 

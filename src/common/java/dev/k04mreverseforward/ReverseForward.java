@@ -51,7 +51,11 @@ public final class ReverseForward {
                 .then(literal("accept")
                         .then(argument("invitationId", StringArgumentType.word())
                                 .executes(context -> MANAGER.accept(
-                                        StringArgumentType.getString(context, "invitationId")))))
+                                        StringArgumentType.getString(context, "invitationId")))
+                                .then(argument("targetPort", IntegerArgumentType.integer(1, 65535))
+                                        .executes(context -> MANAGER.accept(
+                                                StringArgumentType.getString(context, "invitationId"),
+                                                IntegerArgumentType.getInteger(context, "targetPort"))))))
                 .then(literal("deny")
                         .then(argument("invitationId", StringArgumentType.word())
                                 .executes(context -> MANAGER.deny(
@@ -77,6 +81,7 @@ public final class ReverseForward {
     private static int help() {
         message("Commands: register, invite, accept, deny, start, stop, remove, revoke, list, invitations");
         message("Use /k04mrf register <name> <listenPort> <targetPort>, then /k04mrf invite <name> <player>.");
+        message("The invited player may override the proposed target with /k04mrf accept <invitationId> <targetPort>.");
         return 1;
     }
 

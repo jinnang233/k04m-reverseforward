@@ -36,4 +36,12 @@ class ControlPacketTest {
         assertThrows(IllegalArgumentException.class, () -> new ControlPacket(ControlPacket.Type.INVITE,
                 UUID.randomUUID(), UUID.randomUUID(), "valid", 0, 4321));
     }
+
+    @Test
+    void acceptPacketCarriesReceiverSelectedTargetPort() throws Exception {
+        ControlPacket accepted = new ControlPacket(ControlPacket.Type.ACCEPT, UUID.randomUUID(), UUID.randomUUID(),
+                "web", 25570, 9090);
+
+        assertEquals(9090, ControlPacket.decode(accepted.encode()).targetPort());
+    }
 }
