@@ -17,7 +17,7 @@ import java.util.UUID;
 final class RouteStore {
     private static final long MAGIC = 0x4B30344D53544F52L; // K04MSTOR
     private static final int VERSION = 1;
-    private static final int MAX_ROUTES = 256;
+    static final int MAX_ROUTES = 256;
     private final Path file;
 
     RouteStore(Path configDirectory) {

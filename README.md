@@ -70,7 +70,7 @@ Bob sees a message containing a short invitation ID and then runs the following 
 
 After the acceptance confirmation is reliably delivered to Alice, her client listens on `127.0.0.1:25570`. TCP traffic sent to that address is handled by the application listening on Bob's `127.0.0.1:8080`.
 
-`stop` closes only Alice's local entry point and preserves the authorization; `start` opens it again. `remove` deletes the initiator's route and tells the peer to revoke its authorization. Bob can also revoke an inbound authorization directly with `/k04mrf revoke <routeId>`.
+`stop` closes Alice's local entry point and its active connections while preserving the authorization; `start` opens it again. Accepting a pending invitation preserves this stopped state. `remove` deletes the initiator's route and tells the peer to revoke its authorization. Bob can also revoke an inbound authorization directly with `/k04mrf revoke <routeId>`, closing its active connections immediately.
 
 Both endpoints explicitly use IPv4 `127.0.0.1`, even when Java prefers IPv6. Use `/k04mrf list` to check whether a route is actually `listening`. If its port is occupied, startup reports failure; free the port and retry `/k04mrf start <name>`. An accepted, enabled route waits for a server connection before it can listen.
 
@@ -107,3 +107,7 @@ The resulting artifacts are written to:
 The `k04m_reverse_forward:control` channel uses versioned binary messages for invitations, acceptances, denials, and revocations. The data channel is `k04m_reverse_forward:tunnel`. Every new stream begins with the `K04M` magic value, a protocol version, and a 128-bit route UUID. After the receiver verifies the player identity and authorization and successfully connects to the local target, it returns status byte `0`; only then does application-data forwarding begin.
 
 The protocol operates exclusively inside the authenticated and encrypted channels provided by the Krypt04Mcg API. It does not implement its own cryptography or bypass Krypt04Mcg's trust checks.
+
+Tunnel protocol version 2 frames each payload with a four-byte big-endian length (1–16384 bytes). A zero length signals EOF in that direction, allowing TCP half-close request/response exchanges to finish before the connection closes. Both endpoints must use version 2; version 1 streams are rejected. The control and route-storage formats are unchanged.
+
+`gradle check` includes manager lifecycle regressions against API doubles, TCP half-close tests, and IPv4 loopback tests with IPv6 preference enabled.

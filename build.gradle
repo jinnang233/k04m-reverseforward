@@ -62,6 +62,28 @@ test {
     useJUnitPlatform()
 }
 
+// Compile the manager against small API doubles so lifecycle regressions can run
+// without starting Minecraft. Production builds still compile against the real API.
+sourceSets {
+    regressionTest {
+        java.srcDirs = ["src/regressionTest/java"]
+    }
+}
+configurations {
+    regressionTestImplementation.extendsFrom testImplementation
+    regressionTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+tasks.named("compileRegressionTestJava", JavaCompile) {
+    source files(["ForwardingManager", "ControlPacket", "RouteStore", "LoopbackTcp", "TunnelBridge"].collect {
+        "src/common/java/dev/k04mreverseforward/${it}.java"
+    })
+}
+tasks.register("regressionTest", Test) {
+    testClassesDirs = sourceSets.regressionTest.output.classesDirs
+    classpath = sourceSets.regressionTest.runtimeClasspath
+    useJUnitPlatform()
+}
+
 tasks.register("testIpv6Preference", Test) {
     description = "Verifies IPv4 loopback forwarding when the JVM prefers IPv6."
     testClassesDirs = sourceSets.test.output.classesDirs
@@ -72,6 +94,7 @@ tasks.register("testIpv6Preference", Test) {
 }
 
 tasks.named("check") {
+    dependsOn tasks.named("regressionTest")
     dependsOn tasks.named("testIpv6Preference")
 }
 
