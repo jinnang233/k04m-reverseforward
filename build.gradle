@@ -62,6 +62,19 @@ test {
     useJUnitPlatform()
 }
 
+tasks.register("testIpv6Preference", Test) {
+    description = "Verifies IPv4 loopback forwarding when the JVM prefers IPv6."
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    systemProperty "java.net.preferIPv6Addresses", "true"
+    include "**/LoopbackTcpTest.class"
+}
+
+tasks.named("check") {
+    dependsOn tasks.named("testIpv6Preference")
+}
+
 tasks.named("jar") {
     from("LICENSE") {
         rename { "LICENSE_k04m-reverse-forward" }

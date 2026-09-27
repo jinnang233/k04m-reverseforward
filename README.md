@@ -72,6 +72,8 @@ After the acceptance confirmation is reliably delivered to Alice, her client lis
 
 `stop` closes only Alice's local entry point and preserves the authorization; `start` opens it again. `remove` deletes the initiator's route and tells the peer to revoke its authorization. Bob can also revoke an inbound authorization directly with `/k04mrf revoke <routeId>`.
 
+Both endpoints explicitly use IPv4 `127.0.0.1`, even when Java prefers IPv6. Use `/k04mrf list` to check whether a route is actually `listening`. If its port is occupied, startup reports failure; free the port and retry `/k04mrf start <name>`. An accepted, enabled route waits for a server connection before it can listen.
+
 ## Building
 
 The build requires Java 25 and network access to the Minecraft, Fabric, and NeoForge Maven repositories. Place the latest Krypt04Mcg Fabric release JAR at `libs/Krypt04Mcg.jar` before building locally. The `Build` GitHub Actions workflow performs this download automatically.

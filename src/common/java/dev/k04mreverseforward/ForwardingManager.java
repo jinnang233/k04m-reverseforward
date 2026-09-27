@@ -12,15 +12,12 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -162,7 +159,8 @@ final class ForwardingManager {
         mapping.enabled = true;
         try {
             save();
-            if (connected) startListener(mapping);
+            if (connected) return startListener(mapping) ? 1 : 0;
+            ReverseForward.message("Route '" + name + "' will listen after joining a server.");
             return 1;
         } catch (IOException error) {
             return fail("Could not start route: " + error.getMessage());
@@ -293,9 +291,10 @@ final class ForwardingManager {
         mapping.accepted = true;
         mapping.enabled = true;
         save();
-        startListener(mapping);
         ReverseForward.message(sender + " accepted route '" + mapping.name + "' with target 127.0.0.1:"
-                + mapping.targetPort + ". Listening on 127.0.0.1:" + mapping.listenPort + ".");
+                + mapping.targetPort + ".");
+        if (connected) startListener(mapping);
+        else ReverseForward.message("Route '" + mapping.name + "' will listen after joining a server.");
     }
 
     private void receiveReject(String sender, ControlPacket packet) throws IOException {
@@ -322,18 +321,20 @@ final class ForwardingManager {
         save();
     }
 
-    private void startListener(Mapping mapping) {
-        if (!connected || !mapping.enabled || !mapping.accepted || listeners.containsKey(mapping.routeId)) return;
+    private boolean startListener(Mapping mapping) {
+        if (!connected || !mapping.enabled || !mapping.accepted) return false;
+        if (listeners.containsKey(mapping.routeId)) return true;
         try {
-            ServerSocket server = new ServerSocket();
-            server.setReuseAddress(true);
-            server.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), mapping.listenPort), 32);
+            ServerSocket server = LoopbackTcp.listen(mapping.listenPort);
             Listener listener = new Listener(mapping, server);
             listeners.put(mapping.routeId, listener);
             workers.submit(() -> acceptLoop(listener));
             ReverseForward.message("Listening for '" + mapping.name + "' on 127.0.0.1:" + mapping.listenPort + ".");
+            return true;
         } catch (IOException error) {
-            ReverseForward.message("Could not listen for '" + mapping.name + "' on port " + mapping.listenPort + ": " + error.getMessage());
+            ReverseForward.message("Could not listen for '" + mapping.name + "' on 127.0.0.1:" + mapping.listenPort
+                    + ": " + error.getMessage() + ". Free the port, then retry /k04mrf start " + mapping.name + ".");
+            return false;
         }
     }
 
@@ -414,7 +415,7 @@ final class ForwardingManager {
             }
             slotAcquired = true;
             target = new Socket();
-            target.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), route.targetPort), 10_000);
+            target.connect(LoopbackTcp.address(route.targetPort), 10_000);
             target.setTcpNoDelay(true);
             KryptSocket stream = encrypted;
             clientRun(() -> { stream.getOutputStream().write(0); stream.getOutputStream().flush(); });
@@ -513,9 +514,11 @@ final class ForwardingManager {
         return mappings.values().stream().filter(mapping -> mapping.routeId.equals(routeId)).findFirst().orElse(null);
     }
 
-    private static String state(Mapping mapping) {
+    private String state(Mapping mapping) {
         if (!mapping.accepted) return mapping.peer.isEmpty() ? "unassigned" : "pending";
-        return mapping.enabled ? "enabled" : "stopped";
+        if (!mapping.enabled) return "stopped";
+        if (!connected) return "waiting for server connection";
+        return listeners.containsKey(mapping.routeId) ? "listening" : "not listening; retry /k04mrf start " + mapping.name;
     }
 
     private static String key(String name) { return name.toLowerCase(Locale.ROOT); }
