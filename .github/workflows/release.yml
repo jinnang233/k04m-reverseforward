@@ -88,6 +88,108 @@ jobs:
           fi
 
           ls -la release-artifacts
+      - name: Add third-party license notices
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          
+          FABRIC_API_VERSION="$(sed -n 's/^fabric_api_version=//p' gradle.properties)"
+          FABRIC_LOADER_VERSION="$(sed -n 's/^loader_version=//p' gradle.properties)"
+          FABRIC_LOOM_VERSION="$(sed -n 's/^loom_version=//p' gradle.properties)"
+          NEOFORGE_VERSION="$(sed -n 's/^neoforge_version=//p' neoforge/gradle.properties)"
+
+
+          if [ -z "$FABRIC_API_VERSION" ]; then
+            echo "Could not determine Fabric API version from gradle.properties"
+            exit 1
+          fi
+          if [ -z "$FABRIC_LOADER_VERSION" ]; then
+            echo "Could not determine Fabric Loader version from gradle.properties"
+            exit 1
+          fi
+          if [ -z "$FABRIC_LOOM_VERSION" ]; then
+            echo "Could not determine Fabric Loom version from gradle.properties"
+            exit 1
+          fi
+          if [ -z "$NEOFORGE_VERSION" ]; then
+            echo "Could not determine NeoForge version from gradle.properties"
+            exit 1
+          fi
+          mkdir -p legal/META-INF
+          cat >> release-artifacts/THIRD_PARTY_NOTICES.md <<NOTICE_TXT
+          # Third-party notices
+
+          This distribution bundles third-party dependencies inside the release JAR.
+
+          NOTICE_TXT
+
+          cat >> release-artifacts/THIRD_PARTY_NOTICES.md <<NOTICE_TXT
+          
+          
+          ## Fabric API
+
+          Dependency: \`net.fabricmc.fabric-api:fabric-api:${FABRIC_API_VERSION}\`
+          Project: https://fabricmc.net/
+          License: Apache-2.0 license
+
+          NOTICE_TXT
+
+          cat THIRD_PARTY/FABRIC_API_LICENSE >> release-artifacts/THIRD_PARTY_NOTICES.md
+
+          cat >> release-artifacts/THIRD_PARTY_NOTICES.md <<NOTICE_TXT
+        
+          
+          ## Fabric Loader
+          Dependency: \`net.fabricmc:fabric-loader:${FABRIC_LOADER_VERSION}\`
+          Project: https://fabricmc.net/
+          License: Apache-2.0 license
+
+          NOTICE_TXT
+          
+          cat THIRD_PARTY/FABRIC_LOADER_LICENSE >> release-artifacts/THIRD_PARTY_NOTICES.md
+
+          cat >> release-artifacts/THIRD_PARTY_NOTICES.md <<NOTICE_TXT
+
+          
+          ## Fabric Loom
+          Project: https://fabricmc.net/
+          License: MIT License
+
+          NOTICE_TXT
+
+          cat THIRD_PARTY/FABRIC_LOOM_LICENSE >> release-artifacts/THIRD_PARTY_NOTICES.md
+
+          cat >> release-artifacts/THIRD_PARTY_NOTICES.md <<NOTICE_TXT
+
+          
+          ## NeoForge
+          Version: ${NEOFORGE_VERSION}
+          Project: https://neoforged.net/
+          License: LGPL-2.1 license
+
+          NOTICE_TXT
+
+          cat THIRD_PARTY/NEOFORGE_LICENSE >> release-artifacts/THIRD_PARTY_NOTICES.md
+
+          cat >> release-artifacts/THIRD_PARTY_NOTICES.md <<NOTICE_TXT
+
+          sed -i 's/^          //' release-artifacts/THIRD_PARTY_NOTICES.md
+          cp release-artifacts/THIRD_PARTY_NOTICES.md legal/META-INF/THIRD-PARTY-NOTICES.md
+
+          jars=(release-artifacts/*.jar)
+          if [ ${#jars[@]} -eq 0 ]; then
+            echo "No JAR files found for license notice embedding"
+            exit 1
+          fi
+
+          for file in "${jars[@]}"; do
+            (cd legal && jar uf "../${file}" META-INF/THIRD-PARTY-NOTICES.md)
+            jar tf "$file" | grep -Fx 'META-INF/THIRD-PARTY-NOTICES.md' >/dev/null
+          done
+
+          ls -la release-artifacts
 
       - name: Generate snapshot tag
         id: snapshot
