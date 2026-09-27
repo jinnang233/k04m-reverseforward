@@ -7,6 +7,8 @@ import dev.krypt04mcg.api.Krypt04McgApi;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
+import java.nio.file.Path;
+
 import static com.mojang.brigadier.builder.LiteralArgumentBuilder.literal;
 import static com.mojang.brigadier.builder.RequiredArgumentBuilder.argument;
 
@@ -18,12 +20,12 @@ public final class ReverseForward {
 
     private ReverseForward() {}
 
-    public static synchronized void initialize() {
+    public static synchronized void initialize(Path configDirectory) {
         if (initialized) return;
-        initialized = true;
-        MANAGER.load();
+        MANAGER.load(configDirectory);
         Krypt04McgApi.registerReceiver(CONTROL_CHANNEL, MANAGER::receiveControl);
         Krypt04McgApi.registerSocketReceiver(SOCKET_CHANNEL, MANAGER::receiveSocket);
+        initialized = true;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

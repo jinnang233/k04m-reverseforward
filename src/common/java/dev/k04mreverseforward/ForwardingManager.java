@@ -49,9 +49,8 @@ final class ForwardingManager {
     private RouteStore store;
     private boolean connected;
 
-    void load() {
-        Path directory = Minecraft.getInstance().gameDirectory.toPath().resolve("config").resolve("k04m-reverse-forward");
-        store = new RouteStore(directory);
+    void load(Path configDirectory) {
+        store = new RouteStore(configDirectory.resolve("k04m-reverse-forward"));
         try {
             RouteStore.State state = store.load();
             for (RouteStore.MappingData data : state.mappings()) {
