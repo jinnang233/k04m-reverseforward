@@ -1,0 +1,57 @@
+plugins {
+    id "java-library"
+    id "net.neoforged.moddev" version "${moddev_version}"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    mavenCentral()
+}
+
+sourceSets.main.java.srcDir("../src/common/java")
+
+dependencies {
+    compileOnly files("../libs/krypt04mcg-0.19.0.jar")
+}
+
+neoForge {
+    version = project.neoforge_version
+    runs {
+        client { client() }
+    }
+    mods {
+        k04m_reverse_forward {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = "UTF-8"
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("META-INF/neoforge.mods.toml") {
+        expand "version": project.version
+    }
+}
+
+tasks.named("jar") {
+    from("../LICENSE") {
+        rename { "LICENSE_k04m-reverse-forward" }
+    }
+}

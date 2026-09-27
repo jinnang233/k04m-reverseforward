@@ -1,0 +1,7 @@
+.gradle/
+build/
+neoforge/.gradle/
+neoforge/build/
+run/
+neoforge/run/
+*.log

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "k04m_reverse_forward",
+  "version": "${version}",
+  "name": "K04M Reverse Forward",
+  "description": "Authenticated reverse TCP port forwarding over Krypt04Mcg sockets.",
+  "authors": ["K04M Reverse Forward contributors"],
+  "license": "Unlicense",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.k04mreverseforward.fabric.K04MReverseForwardFabric"]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*",
+    "krypt04mcg": ">=0.19.0"
+  }
+}

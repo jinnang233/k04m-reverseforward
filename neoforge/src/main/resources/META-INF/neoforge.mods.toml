@@ -1,0 +1,30 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="Unlicense"
+
+[[mods]]
+modId="k04m_reverse_forward"
+version="${version}"
+displayName="K04M Reverse Forward"
+description='''Authenticated reverse TCP port forwarding over Krypt04Mcg sockets.'''
+
+[[dependencies.k04m_reverse_forward]]
+modId="neoforge"
+type="required"
+versionRange="[26.3.0.16-beta,)"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.k04m_reverse_forward]]
+modId="minecraft"
+type="required"
+versionRange="[26.3,26.4)"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.k04m_reverse_forward]]
+modId="krypt04mcg"
+type="required"
+versionRange="[0.19.0,)"
+ordering="AFTER"
+side="CLIENT"
