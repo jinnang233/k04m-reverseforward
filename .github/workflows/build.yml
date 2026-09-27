@@ -1,0 +1,58 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          gradle-version: "9.5.1"
+
+      - name: Download latest Krypt04Mcg JAR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p libs
+
+          mapfile -t jar_urls < <(
+            gh api repos/jinnang233/Krypt04Mcg/releases/latest \
+              --jq '.assets[] | .name as $name | select(($name | test("^krypt04mcg-[0-9].*\\.jar$")) and (($name | test("-(sources|dev)\\.jar$")) | not)) | .browser_download_url'
+          )
+
+          if [ "${#jar_urls[@]}" -ne 1 ]; then
+            echo "Expected exactly one Fabric Krypt04Mcg release JAR, found ${#jar_urls[@]}"
+            printf '%s\n' "${jar_urls[@]}"
+            exit 1
+          fi
+
+          curl --fail --location --retry 3 \
+            --output libs/Krypt04Mcg.jar \
+            "${jar_urls[0]}"
+          test -s libs/Krypt04Mcg.jar
+
+      - name: Build Fabric
+        run: gradle build --no-daemon
+
+      - name: Build NeoForge
+        run: gradle -p neoforge build --no-daemon

@@ -21,7 +21,7 @@ K04M Reverse Forward 是一个正式的 Minecraft 客户端模组，通过 Krypt
 - 双方在 Krypt04Mcg 中启用 `enableDataApi`，并按 Krypt04Mcg 文档导入/信任对方公钥；
 - 服务端 Relay 必须透明转发 `krypt04mcg:data` Custom Payload。
 
-本项目仅以 `compileOnly` 方式引用 `libs/krypt04mcg-0.19.0.jar`。构建产物不会打包 Krypt04Mcg，也不会修改其代码。运行时必须单独安装 Krypt04Mcg；NeoForge 用户需要安装 Krypt04Mcg 的 NeoForge 构建，而不是把这里的 Fabric JAR 直接放入 NeoForge。
+本项目仅以 `compileOnly` 方式引用 `libs/Krypt04Mcg.jar`。GitHub Actions 会下载并重命名 Krypt04Mcg 的 latest Fabric release JAR；构建产物不会打包 Krypt04Mcg，也不会修改其代码。运行时必须单独安装 Krypt04Mcg；NeoForge 用户需要安装 Krypt04Mcg 的 NeoForge 构建，而不是把这里的 Fabric JAR 直接放入 NeoForge。
 
 ## 命令
 

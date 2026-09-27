@@ -17,7 +17,7 @@ repositories {
 sourceSets.main.java.srcDir("../src/common/java")
 
 dependencies {
-    compileOnly files("../libs/krypt04mcg-0.19.0.jar")
+    compileOnly files("../libs/Krypt04Mcg.jar")
 }
 
 neoForge {
