@@ -302,3 +302,4 @@ jobs:
             release-artifacts/*.jar
             release-artifacts/*.jar.sign
             public_key.pem
+            release-artifacts/THIRD_PARTY_NOTICES.md
