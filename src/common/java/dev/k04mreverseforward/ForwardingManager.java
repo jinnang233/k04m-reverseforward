@@ -406,14 +406,12 @@ final class ForwardingManager {
                 connection.attach(opened);
                 return opened;
             });
-            clientRun(() -> {
-                DataOutputStream output = new DataOutputStream(stream.getOutputStream());
-                output.writeLong(STREAM_MAGIC);
-                output.writeByte(STREAM_VERSION);
-                output.writeLong(mapping.routeId.getMostSignificantBits());
-                output.writeLong(mapping.routeId.getLeastSignificantBits());
-                output.flush();
-            });
+            DataOutputStream output = new DataOutputStream(stream.getOutputStream());
+            output.writeLong(STREAM_MAGIC);
+            output.writeByte(STREAM_VERSION);
+            output.writeLong(mapping.routeId.getMostSignificantBits());
+            output.writeLong(mapping.routeId.getLeastSignificantBits());
+            output.flush();
             int response = stream.getInputStream().read();
             if (response != 0) throw new IOException(response < 0 ? "Peer closed before accepting" : "Peer rejected route (code " + response + ")");
             bridge(local, stream);
@@ -458,7 +456,8 @@ final class ForwardingManager {
             target.connect(LoopbackTcp.address(route.targetPort), 10_000);
             target.setTcpNoDelay(true);
             KryptSocket stream = encrypted;
-            clientRun(() -> { stream.getOutputStream().write(0); stream.getOutputStream().flush(); });
+            stream.getOutputStream().write(0);
+            stream.getOutputStream().flush();
             bridge(target, stream);
         } catch (Exception error) {
             try { reject(encrypted, 3); } catch (Exception ignored) {}
@@ -472,15 +471,16 @@ final class ForwardingManager {
     }
 
     private void reject(KryptSocket socket, int code) throws Exception {
-        clientRun(() -> { socket.getOutputStream().write(code); socket.getOutputStream().flush(); });
+        socket.getOutputStream().write(code);
+        socket.getOutputStream().flush();
     }
 
     private void bridge(Socket tcp, KryptSocket encrypted) throws Exception {
         try {
-            TunnelBridge.run(tcp, encrypted.getInputStream(), frame -> clientRun(() -> {
+            TunnelBridge.run(tcp, encrypted.getInputStream(), frame -> {
                 encrypted.getOutputStream().write(frame);
                 encrypted.getOutputStream().flush();
-            }), workers);
+            }, workers);
         } finally {
             closeEncrypted(encrypted);
         }
@@ -548,10 +548,6 @@ final class ForwardingManager {
         return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
     }
 
-    private static void clientRun(IoTask task) throws Exception {
-        clientCall(() -> { task.run(); return null; });
-    }
-
     private static <T> T clientCall(ThrowingSupplier<T> task) throws Exception {
         Minecraft client = Minecraft.getInstance();
         if (client.isSameThread()) return task.get();
@@ -565,12 +561,11 @@ final class ForwardingManager {
 
     private static void closeEncrypted(KryptSocket socket) {
         if (socket == null || socket.isClosed()) return;
-        Minecraft.getInstance().execute(() -> {
-            try { socket.close(); } catch (RuntimeException ignored) {}
-        });
+        // Input close wakes blocked readers; socket close also wakes blocked writers.
+        try { socket.getInputStream().close(); } catch (IOException | RuntimeException ignored) {}
+        try { socket.close(); } catch (RuntimeException ignored) {}
     }
 
-    @FunctionalInterface private interface IoTask { void run() throws Exception; }
     @FunctionalInterface private interface ThrowingSupplier<T> { T get() throws Exception; }
 
     // Closing a generation also rejects workers that were admitted before revocation
