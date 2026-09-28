@@ -17,13 +17,24 @@ public class KryptSocket {
     }
     public InputStream getInputStream() {
         return new FilterInputStream(input) {
+            @Override public int read() throws IOException { requireWorker(); return in.read(); }
+            @Override public int read(byte[] b, int off, int len) throws IOException {
+                requireWorker(); return in.read(b, off, len);
+            }
             @Override public void close() { KryptSocket.this.close(); }
         };
     }
     public OutputStream getOutputStream() {
         return new FilterOutputStream(output) {
-            @Override public void flush() { handshake.countDown(); }
+            @Override public void write(int b) throws IOException { requireWorker(); out.write(b); }
+            @Override public void write(byte[] b, int off, int len) throws IOException {
+                requireWorker(); out.write(b, off, len);
+            }
+            @Override public void flush() throws IOException { requireWorker(); handshake.countDown(); }
         };
+    }
+    private static void requireWorker() throws IOException {
+        if (net.minecraft.client.Minecraft.getInstance().isSameThread()) throw new IOException("Use an I/O worker");
     }
     public String peer() { return "Bob"; }
     public boolean isClosed() { return closed; }

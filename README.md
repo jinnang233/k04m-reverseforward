@@ -1,6 +1,6 @@
 # K04M Reverse Forward
 
-K04M Reverse Forward is a Minecraft client mod that provides encrypted, authenticated reverse TCP port forwarding between two verified players through the ~~reliable~~ Data API and `KryptSocket` introduced in Krypt04Mcg 0.19.0. It supports both Fabric and NeoForge and is released under the Unlicense.
+K04M Reverse Forward is a Minecraft client mod that provides encrypted, authenticated reverse TCP port forwarding between two verified players through the reliable Data API (control) and the dedicated `KryptSocket` tunnel in Krypt04Mcg 0.22.0. It supports both Fabric and NeoForge and is released under the Unlicense.
 
 > [!WARNING]
 > This codebase was **generated with AI assistance**. Review the implementation carefully, especially the cryptography, key storage, networking behavior, and dependency configuration, before using it in any real environment.
@@ -27,9 +27,9 @@ Both the listening endpoint and target endpoint are restricted to loopback addre
 
 - Minecraft Java 26.3 and Java 25.
 - Fabric Loader 0.19.5 with Fabric API 0.161.0+26.3, or NeoForge 26.3.0.16-beta.
-- Both players must install this mod and Krypt04Mcg 0.19.0 or later for their respective mod loader.
+- Both players must install this mod and Krypt04Mcg 0.22.0 or later for their respective mod loader.
 - Both players must enable `enableDataApi` in Krypt04Mcg and import/trust each other's public keys as described in the Krypt04Mcg documentation.
-- The server-side relay must transparently forward the `krypt04mcg:data` custom payload.
+- The server-side relay must advertise and transparently forward both `krypt04mcg:data` and `krypt04mcg:tunnel` custom payloads (Krypt04McgRelay 1.7.0 or later). Tunnel frames must not be silently dropped by a relay rate quota.
 
 This project references `libs/Krypt04Mcg.jar` as a `compileOnly` dependency. GitHub Actions downloads the latest Fabric release JAR from Krypt04Mcg and renames it automatically. The build output neither bundles nor modifies Krypt04Mcg. Krypt04Mcg must be installed separately at runtime; NeoForge users must install its NeoForge build rather than placing the Fabric JAR in a NeoForge client.
 
@@ -90,17 +90,17 @@ The repository includes a manually triggered `Generate Gradle Wrapper` workflow 
 
 The resulting artifacts are written to:
 
-- `build/libs/k04m-reverse-forward-fabric-1.0.0.jar`
-- `neoforge/build/libs/k04m-reverse-forward-neoforge-1.0.0.jar`
+- `build/libs/k04m-reverse-forward-fabric-1.2.0.jar`
+- `neoforge/build/libs/k04m-reverse-forward-neoforge-1.2.0.jar`
 
 ## Security and Operational Limits
 
-- Confidentiality, identity authentication, retries, and ordered streams are provided by Krypt04Mcg. It remains experimental and should not be used for sensitive or production traffic.
+- Confidentiality, identity authentication, reliable control-message retries, and ordered socket streams are provided by Krypt04Mcg. It remains experimental and should not be used for sensitive or production traffic.
 - Inbound authorization is persisted only after the invitee explicitly accepts it. When a socket arrives, the mod checks the verified sender reported by Krypt04Mcg and the route UUID again.
 - The mod never listens on non-loopback addresses, automatically executes files, or launches target services.
-- `KryptSocket` output must be performed on the Minecraft client thread. This mod schedules that work on the client thread while blocking TCP and socket reads run on virtual threads.
+- `KryptSocket` reads, writes and flushes run on virtual I/O workers. Session creation and control messages still use the Minecraft client thread. Socket callbacks hand work to application workers immediately.
 - Disconnecting from the server terminates all listeners and active Krypt04Mcg streams. Enabled routes with accepted authorization resume listening after reconnection.
-- Krypt04Mcg streams have a 1 MiB output queue and window limits. An individual connection may close under backpressure when the peer or relay is too slow; this is part of the bounded-resource design.
+- Krypt04Mcg streams split writes into 8 KiB frames and block workers when bounded queues fill. Flush waits for local transport submission, not peer consumption. Slow peers apply backpressure; cancellation closes input and output directly to wake blocked workers.
 
 ## Protocol Overview
 
