@@ -1,6 +1,5 @@
 package dev.k04mreverseforward;
 
-import dev.krypt04mcg.api.DataTransfer;
 import dev.krypt04mcg.api.Krypt04McgApi;
 import dev.krypt04mcg.api.KryptSocket;
 import net.minecraft.client.Minecraft;
@@ -242,6 +241,21 @@ final class ForwardingManager {
         return 1;
     }
 
+    void receiveControlSocket(KryptSocket socket) {
+        socket.close(); // Control streams carry one packet, terminated by authenticated EOF.
+        workers.submit(() -> {
+            try {
+                byte[] bytes = socket.getInputStream().readNBytes(ControlPacket.MAX_PACKET + 1);
+                ControlPacket.decode(bytes); // Reject oversized/truncated streams before dispatch.
+                clientCall(() -> { receiveControl(socket.peer(), bytes); return null; });
+            } catch (Exception error) {
+                ReverseForward.message("Rejected control stream from " + socket.peer() + ": " + useful(error));
+            } finally {
+                closeEncrypted(socket);
+            }
+        });
+    }
+
     void receiveControl(String sender, byte[] bytes) {
         try {
             ControlPacket packet = ControlPacket.decode(bytes);
@@ -473,26 +487,21 @@ final class ForwardingManager {
     private void reject(KryptSocket socket, int code) throws Exception {
         socket.getOutputStream().write(code);
         socket.getOutputStream().flush();
+        KryptStreams.finish(socket);
     }
 
     private void bridge(Socket tcp, KryptSocket encrypted) throws Exception {
         try {
-            TunnelBridge.run(tcp, encrypted.getInputStream(), frame -> {
-                encrypted.getOutputStream().write(frame);
-                encrypted.getOutputStream().flush();
-            }, workers);
+            TunnelBridge.run(tcp, encrypted.getInputStream(),
+                    frame -> KryptStreams.write(encrypted, frame), workers);
+            KryptStreams.finish(encrypted);
         } finally {
             closeEncrypted(encrypted);
         }
     }
     private void sendControl(String player, ControlPacket packet, String queuedMessage) {
-        DataTransfer transfer = Krypt04McgApi.send(player, ReverseForward.CONTROL_CHANNEL, packet.encode());
-        ReverseForward.message(queuedMessage + " Transfer " + shortId(transfer.transferId()) + " queued.");
-        transfer.whenComplete(result -> {
-            if (!"DELIVERED".equals(result.status().name())) {
-                ReverseForward.message("Control transfer " + shortId(result.transferId()) + " finished with " + result.status() + ".");
-            }
-        });
+        Krypt04McgApi.send(player, ReverseForward.CONTROL_CHANNEL, packet.encode());
+        ReverseForward.message(queuedMessage + " Queued locally; no delivery receipt is available.");
     }
 
     private void save() throws IOException {
@@ -561,7 +570,7 @@ final class ForwardingManager {
 
     private static void closeEncrypted(KryptSocket socket) {
         if (socket == null || socket.isClosed()) return;
-        // Input close wakes blocked readers; socket close also wakes blocked writers.
+        // Input close cancels the stream and wakes blocked readers.
         try { socket.getInputStream().close(); } catch (IOException | RuntimeException ignored) {}
         try { socket.close(); } catch (RuntimeException ignored) {}
     }

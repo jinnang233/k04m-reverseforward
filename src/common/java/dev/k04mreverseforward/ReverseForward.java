@@ -23,7 +23,7 @@ public final class ReverseForward {
     public static synchronized void initialize(Path configDirectory) {
         if (initialized) return;
         MANAGER.load(configDirectory);
-        Krypt04McgApi.registerReceiver(CONTROL_CHANNEL, MANAGER::receiveControl);
+        Krypt04McgApi.registerSocketReceiver(CONTROL_CHANNEL, MANAGER::receiveControlSocket);
         Krypt04McgApi.registerSocketReceiver(SOCKET_CHANNEL, MANAGER::receiveSocket);
         initialized = true;
     }

@@ -35,6 +35,7 @@ dependencies {
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
     compileOnly files("libs/Krypt04Mcg.jar")
     testImplementation sourceSets.client.output
+    testImplementation files("libs/Krypt04Mcg.jar")
     testImplementation platform("org.junit:junit-bom:5.14.1")
     testImplementation "org.junit.jupiter:junit-jupiter"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
@@ -74,7 +75,7 @@ configurations {
     regressionTestRuntimeOnly.extendsFrom testRuntimeOnly
 }
 tasks.named("compileRegressionTestJava", JavaCompile) {
-    source files(["ForwardingManager", "ControlPacket", "RouteStore", "LoopbackTcp", "TunnelBridge"].collect {
+    source files(["ForwardingManager", "ControlPacket", "RouteStore", "LoopbackTcp", "TunnelBridge", "KryptStreams"].collect {
         "src/common/java/dev/k04mreverseforward/${it}.java"
     })
 }

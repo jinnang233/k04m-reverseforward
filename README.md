@@ -1,6 +1,6 @@
 # K04M Reverse Forward
 
-K04M Reverse Forward is a Minecraft client mod that provides encrypted, authenticated reverse TCP port forwarding between two verified players through the reliable Data API (control) and the dedicated `KryptSocket` tunnel in Krypt04Mcg 0.22.0. It supports both Fabric and NeoForge and is released under the Unlicense.
+K04M Reverse Forward is a Minecraft client mod that provides encrypted, authenticated reverse TCP port forwarding between two verified players through `KryptSocket` control and tunnel streams in Krypt04Mcg 0.23.0. It supports both Fabric and NeoForge and is released under the Unlicense.
 
 > [!WARNING]
 > This codebase was **generated with AI assistance**. Review the implementation carefully, especially the cryptography, key storage, networking behavior, and dependency configuration, before using it in any real environment.
@@ -27,9 +27,9 @@ Both the listening endpoint and target endpoint are restricted to loopback addre
 
 - Minecraft Java 26.3 and Java 25.
 - Fabric Loader 0.19.5 with Fabric API 0.161.0+26.3, or NeoForge 26.3.0.16-beta.
-- Both players must install this mod and Krypt04Mcg 0.22.0 or later for their respective mod loader.
+- Both players must install this mod and Krypt04Mcg 0.23.0 or later for their respective mod loader.
 - Both players must enable `enableDataApi` in Krypt04Mcg and import/trust each other's public keys as described in the Krypt04Mcg documentation.
-- The server-side relay must advertise and transparently forward both `krypt04mcg:data` and `krypt04mcg:tunnel` custom payloads (Krypt04McgRelay 1.7.0 or later). Tunnel frames must not be silently dropped by a relay rate quota.
+- The server-side relay must support the raw encrypted channel protocol: `krypt04mcg_stream:control` and `krypt04mcg_stream:data/0` through the configured channel count. Legacy relays are incompatible. Concurrent control and tunnel streams share Krypt04Mcg's `apiChannelCount` pool (default 16).
 
 This project references `libs/Krypt04Mcg.jar` as a `compileOnly` dependency. GitHub Actions downloads the latest Fabric release JAR from Krypt04Mcg and renames it automatically. The build output neither bundles nor modifies Krypt04Mcg. Krypt04Mcg must be installed separately at runtime; NeoForge users must install its NeoForge build rather than placing the Fabric JAR in a NeoForge client.
 
@@ -68,7 +68,7 @@ Bob sees a message containing a short invitation ID and then runs the following 
 /k04mrf accept a1b2c3d4 8080
 ```
 
-After the acceptance confirmation is reliably delivered to Alice, her client listens on `127.0.0.1:25570`. TCP traffic sent to that address is handled by the application listening on Bob's `127.0.0.1:8080`.
+After Alice receives the acceptance confirmation, her client listens on `127.0.0.1:25570`. TCP traffic sent to that address is handled by the application listening on Bob's `127.0.0.1:8080`.
 
 `stop` closes Alice's local entry point and its active connections while preserving the authorization; `start` opens it again. Accepting a pending invitation preserves this stopped state. `remove` deletes the initiator's route and tells the peer to revoke its authorization. Bob can also revoke an inbound authorization directly with `/k04mrf revoke <routeId>`, closing its active connections immediately.
 
@@ -95,16 +95,16 @@ The resulting artifacts are written to:
 
 ## Security and Operational Limits
 
-- Confidentiality, identity authentication, reliable control-message retries, and ordered socket streams are provided by Krypt04Mcg. It remains experimental and should not be used for sensitive or production traffic.
+- Confidentiality, identity authentication, ordered socket streams, and authenticated EOF are provided by Krypt04Mcg. It remains experimental and should not be used for sensitive or production traffic.
 - Inbound authorization is persisted only after the invitee explicitly accepts it. When a socket arrives, the mod checks the verified sender reported by Krypt04Mcg and the route UUID again.
 - The mod never listens on non-loopback addresses, automatically executes files, or launches target services.
-- `KryptSocket` reads, writes and flushes run on virtual I/O workers. Session creation and control messages still use the Minecraft client thread. Socket callbacks hand work to application workers immediately.
+- `KryptSocket` reads, writes and flushes run on virtual I/O workers. Stream creation and control-message processing still use the Minecraft client thread. Socket callbacks hand work to application workers immediately.
 - Disconnecting from the server terminates all listeners and active Krypt04Mcg streams. Enabled routes with accepted authorization resume listening after reconnection.
-- Krypt04Mcg streams split writes into 8 KiB frames and block workers when bounded queues fill. Flush waits for local transport submission, not peer consumption. Slow peers apply backpressure; cancellation closes input and output directly to wake blocked workers.
+- Krypt04Mcg streams carry up to 16 KiB per encrypted record and buffer at most 1 MiB per direction. Forwarding workers pace writes using available queue capacity. Flush does not wait for delivery; normal completion waits for queued output and both authenticated EOFs before cleanup. Cancellation closes input to abort blocked reads.
 
 ## Protocol Overview
 
-The `k04m_reverse_forward:control` channel uses versioned binary messages for invitations, acceptances, denials, and revocations. The data channel is `k04m_reverse_forward:tunnel`. Every new stream begins with the `K04M` magic value, a protocol version, and a 128-bit route UUID. After the receiver verifies the player identity and authorization and successfully connects to the local target, it returns status byte `0`; only then does application-data forwarding begin.
+The `k04m_reverse_forward:control` channel uses one bounded, versioned binary message per stream, terminated by authenticated EOF, for invitations, acceptances, denials, and revocations. Sending only confirms local queueing; there are no delivery receipts or automatic retries. If an invitation or acceptance is lost, invite again. The data channel is `k04m_reverse_forward:tunnel`. Every new stream begins with the `K04M` magic value, a protocol version, and a 128-bit route UUID. After the receiver verifies the player identity and authorization and successfully connects to the local target, it returns status byte `0`; only then does application-data forwarding begin.
 
 The protocol operates exclusively inside the authenticated and encrypted channels provided by the Krypt04Mcg API. It does not implement its own cryptography or bypass Krypt04Mcg's trust checks.
 
