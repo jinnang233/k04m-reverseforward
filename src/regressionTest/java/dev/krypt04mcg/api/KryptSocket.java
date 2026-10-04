@@ -10,6 +10,7 @@ public class KryptSocket {
     public final ByteArrayOutputStream output = new ByteArrayOutputStream();
     public final CountDownLatch handshake = new CountDownLatch(1);
     public volatile boolean closed;
+    private volatile boolean outputEnded;
 
     public KryptSocket() {
         try { feed = new PipedOutputStream(input); }
@@ -21,7 +22,7 @@ public class KryptSocket {
             @Override public int read(byte[] b, int off, int len) throws IOException {
                 requireWorker(); return in.read(b, off, len);
             }
-            @Override public void close() { KryptSocket.this.close(); }
+            @Override public void close() { KryptSocket.this.abort(); }
         };
     }
     public OutputStream getOutputStream() {
@@ -38,7 +39,11 @@ public class KryptSocket {
     }
     public String peer() { return "Bob"; }
     public boolean isClosed() { return closed; }
-    public void close() {
+    public int writableBytes() { return 1024 * 1024; }
+    public boolean isFailed() { return closed; }
+    public boolean outputEnded() { return outputEnded; }
+    public void close() { outputEnded = true; }
+    private void abort() {
         closed = true;
         try { feed.close(); input.close(); } catch (IOException ignored) {}
     }

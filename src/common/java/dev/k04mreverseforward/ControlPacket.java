@@ -12,7 +12,7 @@ record ControlPacket(Type type, UUID invitationId, UUID routeId, String name,
                      int listenPort, int targetPort) {
     private static final long MAGIC = 0x4B30344D4354524CL; // K04MCTRL
     private static final int VERSION = 1;
-    private static final int MAX_PACKET = 4096;
+    static final int MAX_PACKET = 4096;
     private static final int MAX_NAME_BYTES = 48;
 
     enum Type { INVITE, ACCEPT, REJECT, REVOKE }

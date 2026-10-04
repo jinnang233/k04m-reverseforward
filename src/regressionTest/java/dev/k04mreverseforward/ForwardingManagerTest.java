@@ -207,6 +207,43 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    @Test void fragmentedControlWaitsForEof() throws Exception {
+        ForwardingManager manager = manager();
+        KryptSocket stream = new KryptSocket();
+        try {
+            byte[] packet = invite().encode();
+            manager.receiveControlSocket(stream);
+            for (byte value : packet) {
+                stream.feed.write(value);
+                stream.feed.flush();
+            }
+            assertTrue(map(manager, "invitations").isEmpty());
+            stream.feed.close();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            while (!stream.closed && System.nanoTime() < deadline) Thread.sleep(5);
+            assertTrue(stream.closed);
+            assertEquals(1, map(manager, "invitations").size());
+        } finally { shutdown(manager); }
+    }
+
+    @Test void invalidControlStreamsAreRejected() throws Exception {
+        for (byte[] bytes : new byte[][] {
+                java.util.Arrays.copyOf(invite().encode(), 12),
+                java.util.Arrays.copyOf(invite().encode(), ControlPacket.MAX_PACKET + 1)}) {
+            ForwardingManager manager = manager();
+            KryptSocket stream = new KryptSocket();
+            try {
+                stream.feed.write(bytes);
+                stream.feed.close();
+                manager.receiveControlSocket(stream);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+                while (!stream.closed && System.nanoTime() < deadline) Thread.sleep(5);
+                assertTrue(stream.closed);
+                assertTrue(map(manager, "invitations").isEmpty());
+            } finally { shutdown(manager); }
+        }
+    }
+
     private ForwardingManager manager() {
         var manager = new ForwardingManager();
         manager.load(directory);
