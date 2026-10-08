@@ -20,6 +20,106 @@ import static org.junit.jupiter.api.Assertions.*;
 class ForwardingManagerTest {
     @TempDir Path directory;
 
+    @Test void unrelatedRevocationDoesNotWriteRouteStore() throws Exception {
+        ForwardingManager manager = manager();
+        try {
+            ControlPacket unrelated = reply(invite(), ControlPacket.Type.REVOKE, 8080);
+            for (int i = 0; i < 100; i++) manager.receiveControl("Mallory", unrelated.encode());
+            assertFalse(Files.exists(directory.resolve("k04m-reverse-forward/routes.dat")));
+        } finally { shutdown(manager); }
+    }
+
+    @Test void revocationFromWrongPeerLeavesAuthorizationAndStoreUntouched() throws Exception {
+        ForwardingManager manager = manager();
+        try {
+            ControlPacket invitation = invite();
+            manager.receiveControl("Bob", invitation.encode());
+            assertEquals(1, manager.accept(invitation.invitationId().toString()));
+            Path saved = directory.resolve("k04m-reverse-forward/routes.dat");
+            byte[] before = Files.readAllBytes(saved);
+            Path temporary = saved.resolveSibling("routes.dat.tmp");
+            Files.writeString(temporary, "untouched");
+            manager.receiveControl("Mallory", reply(invitation, ControlPacket.Type.REVOKE, 8080).encode());
+            assertEquals(1, map(manager, "allowedRoutes").size());
+            assertArrayEquals(before, Files.readAllBytes(saved));
+            assertEquals("untouched", Files.readString(temporary));
+        } finally { shutdown(manager); }
+    }
+
+    @Test void duplicateDoesNotRefreshDeadlineAndAcceptRejectsExpiredOfferWithoutTick() throws Exception {
+        var clock = new java.util.concurrent.atomic.AtomicLong();
+        ForwardingManager manager = new ForwardingManager(clock::get);
+        manager.load(directory);
+        try {
+            ControlPacket invitation = invite();
+            manager.receiveControl("Bob", invitation.encode());
+            clock.set(TimeUnit.SECONDS.toNanos(119));
+            manager.receiveControl("bOB", invitation.encode());
+            clock.set(TimeUnit.SECONDS.toNanos(120));
+            assertEquals(0, manager.accept(invitation.invitationId().toString()));
+            assertTrue(map(manager, "invitations").isEmpty());
+            assertTrue(map(manager, "allowedRoutes").isEmpty());
+        } finally { shutdown(manager); }
+    }
+
+    @Test void manyPeersCannotExceedGlobalInvitationLimitAndDenyReleasesCapacity() throws Exception {
+        ForwardingManager manager = manager();
+        try {
+            ControlPacket original = invite();
+            manager.receiveControl("Bob", original.encode());
+            for (int i = 0; i < 100; i++) manager.receiveControl("peer" + i, invite().encode());
+            assertEquals(64, map(manager, "invitations").size());
+            assertTrue(map(manager, "invitations").containsKey(original.invitationId()));
+            assertEquals(1, manager.deny(original.invitationId().toString()));
+            ControlPacket replacement = invite();
+            manager.receiveControl("Bob", replacement.encode());
+            assertEquals(64, map(manager, "invitations").size());
+            assertEquals(1, manager.accept(replacement.invitationId().toString()));
+        } finally { shutdown(manager); }
+    }
+
+    @Test void pendingInvitationCannotBeReboundToAnotherSenderOrLocalPort() throws Exception {
+        for (String attacker : new String[]{"Bob", "Mallory"}) {
+            ForwardingManager manager = manager();
+            try {
+                ControlPacket original = invite();
+                manager.receiveControl("Bob", original.encode());
+                var changed = new ControlPacket(ControlPacket.Type.INVITE, original.invitationId(),
+                        original.routeId(), "changed", original.listenPort(), 5432);
+                manager.receiveControl(attacker, changed.encode());
+                assertEquals(1, manager.accept(original.invitationId().toString()));
+                var saved = new RouteStore(directory.resolve("k04m-reverse-forward")).load().allowed().stream()
+                        .filter(route -> route.routeId().equals(original.routeId())).findFirst().orElseThrow();
+                assertEquals("Bob", saved.peer());
+                assertEquals(8080, saved.targetPort());
+                assertEquals("in", saved.name());
+            } finally { shutdown(manager); }
+        }
+    }
+
+    @Test void invitationFloodIsBoundedAndDoesNotEvictAnotherPeersOffer() throws Exception {
+        ForwardingManager manager = manager();
+        try {
+            ControlPacket original = invite();
+            manager.receiveControl("Bob", original.encode());
+            for (int i = 0; i < 1000; i++) manager.receiveControl("Mallory", invite().encode());
+            assertTrue(map(manager, "invitations").size() <= 64);
+            assertTrue(map(manager, "invitations").containsKey(original.invitationId()));
+            assertEquals(1, manager.accept(original.invitationId().toString()));
+        } finally { shutdown(manager); }
+    }
+
+    @Test void onePeerCannotReserveAllPendingInvitationSlots() throws Exception {
+        ForwardingManager manager = manager();
+        try {
+            for (int i = 0; i < 64; i++) manager.receiveControl("Mallory", invite().encode());
+            assertEquals(4, map(manager, "invitations").size());
+            ControlPacket original = invite();
+            manager.receiveControl("Bob", original.encode());
+            assertEquals(1, manager.accept(original.invitationId().toString()));
+        } finally { shutdown(manager); }
+    }
+
     @Test void staleRepliesAreIgnoredAndAcceptancePreservesStop() throws Exception {
         ForwardingManager manager = manager();
         try {

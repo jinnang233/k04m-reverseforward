@@ -12,7 +12,6 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -25,20 +24,28 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongSupplier;
 
 final class ForwardingManager {
     private static final long STREAM_MAGIC = 0x4B30344D5354524DL; // K04MSTRM
     private static final int STREAM_VERSION = 2;
     private static final int MAX_CONNECTIONS_PER_ROUTE = 8;
     private static final Duration INVITATION_TTL = Duration.ofMinutes(2);
+    private static final int MAX_PENDING_INVITATIONS = 64;
+    private static final int MAX_PENDING_INVITATIONS_PER_PEER = 4;
 
     private final Map<String, Mapping> mappings = new ConcurrentHashMap<>();
     private final Map<UUID, AllowedRoute> allowedRoutes = new ConcurrentHashMap<>();
     private final Map<UUID, Invitation> invitations = new ConcurrentHashMap<>();
     private final Map<UUID, Listener> listeners = new ConcurrentHashMap<>();
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
+    private final LongSupplier clock;
     private RouteStore store;
     private boolean connected;
+
+    ForwardingManager() { this(System::nanoTime); }
+
+    ForwardingManager(LongSupplier clock) { this.clock = java.util.Objects.requireNonNull(clock); }
 
     void load(Path configDirectory) {
         store = new RouteStore(configDirectory.resolve("k04m-reverse-forward"));
@@ -299,13 +306,20 @@ final class ForwardingManager {
 
     private void receiveInvite(String sender, ControlPacket packet) {
         if (!validPlayer(sender)) return;
+        expireInvitations();
+        // An acceptance token must keep the sender and port originally shown to the user.
+        // Retransmissions neither replace the offer nor refresh its deadline.
+        if (invitations.containsKey(packet.invitationId())) return;
         AllowedRoute existing = allowedRoutes.get(packet.routeId());
         if (existing != null && !existing.peer.equalsIgnoreCase(sender)) {
             ReverseForward.message("Rejected invitation from " + sender + ": its route ID conflicts with an existing authorization.");
             return;
         }
+        if (invitations.size() >= MAX_PENDING_INVITATIONS
+                || invitations.values().stream().filter(invitation -> invitation.sender.equalsIgnoreCase(sender))
+                        .count() >= MAX_PENDING_INVITATIONS_PER_PEER) return;
         Invitation invitation = new Invitation(packet.invitationId(), packet.routeId(), packet.name(), sender,
-                packet.listenPort(), packet.targetPort(), Instant.now());
+                packet.listenPort(), packet.targetPort(), clock.getAsLong());
         invitations.put(invitation.invitationId, invitation);
         ReverseForward.message(sender + " invites you to route '" + packet.name() + "' to your 127.0.0.1:"
                 + packet.targetPort() + " (proposed). Accept or choose another local port: /k04mrf accept "
@@ -339,20 +353,25 @@ final class ForwardingManager {
     }
 
     private void receiveRevoke(String sender, ControlPacket packet) throws IOException {
+        boolean changed = false;
         Mapping mapping = mappingByRoute(packet.routeId());
-        if (mapping != null && mapping.peer.equalsIgnoreCase(sender)) {
+        if (mapping != null && mapping.peer.equalsIgnoreCase(sender)
+                && (mapping.accepted || mapping.pendingInvitation != null)) {
             mapping.accepted = false;
             mapping.pendingInvitation = null;
             stopListener(mapping.routeId);
+            changed = true;
             ReverseForward.message(sender + " revoked route '" + mapping.name + "'.");
         }
         AllowedRoute allowed = allowedRoutes.get(packet.routeId());
         if (allowed != null && allowed.peer.equalsIgnoreCase(sender)) {
             allowedRoutes.remove(packet.routeId());
             allowed.connections.close();
+            changed = true;
             ReverseForward.message(sender + " removed route '" + allowed.name + "'.");
         }
-        save();
+        // Unrelated or repeated remote packets must not trigger synchronous disk writes.
+        if (changed) save();
     }
 
     private boolean matchesPending(Mapping mapping, String sender, ControlPacket packet) {
@@ -514,11 +533,12 @@ final class ForwardingManager {
     }
 
     private void expireInvitations() {
-        Instant cutoff = Instant.now().minus(INVITATION_TTL);
-        invitations.values().removeIf(invitation -> invitation.receivedAt.isBefore(cutoff));
+        long now = clock.getAsLong();
+        invitations.values().removeIf(invitation -> now - invitation.receivedAt >= INVITATION_TTL.toNanos());
     }
 
     private Invitation findInvitation(String text) {
+        expireInvitations();
         String normalized = text.toLowerCase(Locale.ROOT);
         List<Invitation> matches = invitations.values().stream()
                 .filter(invitation -> invitation.invitationId.toString().toLowerCase(Locale.ROOT).startsWith(normalized)).toList();
@@ -646,7 +666,7 @@ final class ForwardingManager {
     }
 
     private record Invitation(UUID invitationId, UUID routeId, String name, String sender,
-                              int listenPort, int targetPort, Instant receivedAt) {
+                              int listenPort, int targetPort, long receivedAt) {
         ControlPacket packet(ControlPacket.Type type) {
             return new ControlPacket(type, invitationId, routeId, name, listenPort, targetPort);
         }

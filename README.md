@@ -53,6 +53,12 @@ All commands are client-side commands:
 
 For `invitationId` and `routeId`, you may use the eight-character prefixes displayed by `/k04mrf invitations` or `/k04mrf list`. The command is rejected if the prefix is ambiguous. The port supplied during `register` is proposed to the invited player; they may accept it as-is or override it by supplying `targetPort` to `accept`.
 
+Pending invitations expire after two minutes, including when accepting or denying them. At most
+64 invitations are retained globally and four per player; excess offers are ignored without
+evicting existing offers. A pending invitation ID keeps its original sender, route and proposed
+port. Duplicate packets cannot replace those details or extend the deadline; changed offers
+must use a new invitation ID.
+
 ### Example
 
 Alice runs:
