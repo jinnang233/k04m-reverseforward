@@ -33,11 +33,15 @@ final class ForwardingManager {
     private static final Duration INVITATION_TTL = Duration.ofMinutes(2);
     private static final int MAX_PENDING_INVITATIONS = 64;
     private static final int MAX_PENDING_INVITATIONS_PER_PEER = 4;
+    private static final long REQUEST_TTL_NANOS = Duration.ofSeconds(30).toNanos();
+    private static final int MAX_PENDING_READS = 64;
+    private static final int MAX_PENDING_READS_PER_PEER = 16;
 
     private final Map<String, Mapping> mappings = new ConcurrentHashMap<>();
     private final Map<UUID, AllowedRoute> allowedRoutes = new ConcurrentHashMap<>();
     private final Map<UUID, Invitation> invitations = new ConcurrentHashMap<>();
     private final Map<UUID, Listener> listeners = new ConcurrentHashMap<>();
+    private final Map<Connection, PendingRead> pendingReads = new ConcurrentHashMap<>();
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
     private final LongSupplier clock;
     private RouteStore store;
@@ -249,16 +253,23 @@ final class ForwardingManager {
     }
 
     void receiveControlSocket(KryptSocket socket) {
+        PendingRead pending = admit(socket);
+        if (pending == null) return;
         socket.close(); // Control streams carry one packet, terminated by authenticated EOF.
-        workers.submit(() -> {
+        submit(pending, () -> {
             try {
                 byte[] bytes = socket.getInputStream().readNBytes(ControlPacket.MAX_PACKET + 1);
                 ControlPacket.decode(bytes); // Reject oversized/truncated streams before dispatch.
-                clientCall(() -> { receiveControl(socket.peer(), bytes); return null; });
+                clientCall(() -> {
+                    if (pending.complete(clock.getAsLong())) receiveControl(socket.peer(), bytes);
+                    return null;
+                });
             } catch (Exception error) {
-                ReverseForward.message("Rejected control stream from " + socket.peer() + ": " + useful(error));
+                if (!pending.connection.closed())
+                    ReverseForward.message("Rejected control stream from " + socket.peer() + ": " + useful(error));
             } finally {
-                closeEncrypted(socket);
+                pending.connection.close();
+                pendingReads.remove(pending.connection, pending);
             }
         });
     }
@@ -278,10 +289,37 @@ final class ForwardingManager {
     }
 
     void receiveSocket(KryptSocket socket) {
-        workers.submit(() -> handleIncomingSocket(socket));
+        PendingRead pending = admit(socket);
+        if (pending != null) submit(pending, () -> handleIncomingSocket(socket, pending));
+    }
+
+    private synchronized PendingRead admit(KryptSocket socket) {
+        if (pendingReads.size() >= MAX_PENDING_READS
+                || pendingReads.values().stream().filter(p -> p.peer.equalsIgnoreCase(socket.peer()))
+                        .count() >= MAX_PENDING_READS_PER_PEER) {
+            closeEncrypted(socket);
+            return null;
+        }
+        var connection = new Connection();
+        connection.attach(socket);
+        var pending = new PendingRead(connection, socket.peer(), clock.getAsLong());
+        pendingReads.put(connection, pending);
+        return pending;
+    }
+
+    private void submit(PendingRead pending, Runnable task) {
+        try { workers.submit(task); }
+        catch (RuntimeException rejected) {
+            pending.connection.close();
+            pendingReads.remove(pending.connection, pending);
+        }
     }
 
     void tick() {
+        long now = clock.getAsLong();
+        pendingReads.forEach((connection, pending) -> {
+            if (pending.expire(now)) pendingReads.remove(connection, pending);
+        });
         boolean nowConnected = Minecraft.getInstance().player != null && Minecraft.getInstance().getConnection() != null;
         if (nowConnected && !connected) {
             connected = true;
@@ -294,6 +332,8 @@ final class ForwardingManager {
 
     void disconnect() {
         connected = false;
+        pendingReads.values().forEach(pending -> pending.connection.close());
+        pendingReads.clear();
         listeners.values().forEach(Listener::close);
         listeners.clear();
         allowedRoutes.replaceAll((id, route) -> {
@@ -456,12 +496,11 @@ final class ForwardingManager {
         }
     }
 
-    private void handleIncomingSocket(KryptSocket encrypted) {
+    private void handleIncomingSocket(KryptSocket encrypted, PendingRead pending) {
         Socket target = null;
         AllowedRoute route = null;
         boolean slotAcquired = false;
-        Connection connection = new Connection();
-        connection.attach(encrypted);
+        Connection connection = pending.connection;
         ConnectionGroup group = null;
         try {
             // Do not buffer this header: a BufferedInputStream could read application bytes
@@ -472,6 +511,7 @@ final class ForwardingManager {
                 return;
             }
             UUID routeId = new UUID(input.readLong(), input.readLong());
+            if (pending.expire(clock.getAsLong())) return;
             route = allowedRoutes.get(routeId);
             if (route == null || !route.peer.equalsIgnoreCase(encrypted.peer())) {
                 reject(encrypted, 2);
@@ -484,6 +524,11 @@ final class ForwardingManager {
             slotAcquired = true;
             group = route.connections;
             if (!group.add(connection)) return;
+            if (!pending.complete(clock.getAsLong())) return;
+            // Transfer ownership only after the authorization group tracks this connection.
+            // disconnect() can therefore close it throughout setup, without a tracking gap.
+            pendingReads.remove(connection, pending);
+            if (connection.closed()) return;
             target = new Socket();
             connection.attach(target);
             target.connect(LoopbackTcp.address(route.targetPort), 10_000);
@@ -493,10 +538,13 @@ final class ForwardingManager {
             stream.getOutputStream().flush();
             bridge(target, stream);
         } catch (Exception error) {
-            try { reject(encrypted, 3); } catch (Exception ignored) {}
-            ReverseForward.message("Incoming forwarded connection from " + encrypted.peer() + " failed: " + useful(error));
+            if (!connection.closed()) {
+                try { reject(encrypted, 3); } catch (Exception ignored) {}
+                ReverseForward.message("Incoming forwarded connection from " + encrypted.peer() + " failed: " + useful(error));
+            }
         } finally {
             connection.close();
+            pendingReads.remove(connection, pending);
             if (group != null) group.remove(connection);
             if (slotAcquired) route.slots.release();
             closeEncrypted(encrypted);
@@ -596,6 +644,32 @@ final class ForwardingManager {
     }
 
     @FunctionalInterface private interface ThrowingSupplier<T> { T get() throws Exception; }
+
+    private static final class PendingRead {
+        final Connection connection;
+        final String peer;
+        final long started;
+        private boolean complete;
+
+        PendingRead(Connection connection, String peer, long started) {
+            this.connection = connection; this.peer = peer; this.started = started;
+        }
+
+        synchronized boolean complete(long now) {
+            if (complete || connection.closed() || now - started >= REQUEST_TTL_NANOS) {
+                connection.close();
+                return false;
+            }
+            complete = true;
+            return true;
+        }
+
+        synchronized boolean expire(long now) {
+            if (complete || now - started < REQUEST_TTL_NANOS) return false;
+            connection.close();
+            return true;
+        }
+    }
 
     // Closing a generation also rejects workers that were admitted before revocation
     // but have not attached their sockets yet.

@@ -21,6 +21,206 @@ import static org.junit.jupiter.api.Assertions.*;
 class ForwardingManagerTest {
     @TempDir Path directory;
 
+    @Test void slowTunnelHeaderCannotExtendItsDeadline() throws Exception {
+        var clock = new java.util.concurrent.atomic.AtomicLong();
+        var manager = new ForwardingManager(clock::get);
+        manager.load(directory);
+        var stream = new KryptSocket();
+        try {
+            manager.receiveSocket(stream);
+            stream.feed.write(0x4B); stream.feed.flush();
+            clock.set(TimeUnit.SECONDS.toNanos(29));
+            stream.feed.write(0x30); stream.feed.flush();
+            manager.tick();
+            assertFalse(stream.closed);
+            clock.set(TimeUnit.SECONDS.toNanos(30));
+            manager.tick();
+            assertTrue(stream.closed);
+            assertTrue(map(manager, "pendingReads").isEmpty());
+        } finally { shutdown(manager); }
+    }
+
+    @Test void completeControlWithoutEofExpiresAndNewControlCanBeAccepted() throws Exception {
+        var clock = new java.util.concurrent.atomic.AtomicLong();
+        var manager = new ForwardingManager(clock::get);
+        manager.load(directory);
+        var stream = new KryptSocket();
+        try {
+            manager.receiveControlSocket(stream);
+            stream.feed.write(invite().encode()); stream.feed.flush();
+            clock.set(TimeUnit.SECONDS.toNanos(29));
+            manager.tick();
+            assertFalse(stream.closed);
+            assertTrue(map(manager, "invitations").isEmpty());
+            clock.set(TimeUnit.SECONDS.toNanos(30));
+            manager.tick();
+            assertTrue(stream.closed);
+            assertTrue(map(manager, "pendingReads").isEmpty());
+            assertTrue(map(manager, "invitations").isEmpty());
+
+            var next = new KryptSocket();
+            next.feed.write(invite().encode()); next.feed.close();
+            manager.receiveControlSocket(next);
+            awaitClosed(next);
+            assertEquals(1, map(manager, "invitations").size());
+        } finally { shutdown(manager); }
+    }
+
+    @Test void disconnectCancelsPendingControlAndTunnelReaders() throws Exception {
+        var manager = manager();
+        var control = new KryptSocket();
+        var tunnel = new KryptSocket();
+        try {
+            manager.receiveControlSocket(control);
+            manager.receiveSocket(tunnel);
+            manager.disconnect();
+            assertTrue(control.closed);
+            assertTrue(tunnel.closed);
+            assertTrue(map(manager, "pendingReads").isEmpty());
+            assertTrue(map(manager, "invitations").isEmpty());
+        } finally { shutdown(manager); }
+    }
+
+    @Test void aPeerCannotReserveMoreThanSixteenPendingReadersAcrossBothChannels() throws Exception {
+        var manager = manager();
+        try {
+            for (int i = 0; i < 16; i++) {
+                var stream = new KryptSocket(i % 2 == 0 ? "Bob" : "bOB");
+                if (i % 2 == 0) manager.receiveSocket(stream); else manager.receiveControlSocket(stream);
+                assertFalse(stream.closed);
+            }
+            var overflow = new KryptSocket();
+            manager.receiveControlSocket(overflow);
+            assertTrue(overflow.closed);
+            assertEquals(16, map(manager, "pendingReads").size());
+        } finally { shutdown(manager); }
+    }
+
+    @Test void pendingReaderCapacityIsBoundedAcrossPeers() throws Exception {
+        var manager = manager();
+        try {
+            for (int i = 0; i < 64; i++) {
+                var stream = new KryptSocket("Peer" + i);
+                manager.receiveSocket(stream);
+                assertFalse(stream.closed);
+            }
+            var overflow = new KryptSocket("Other");
+            manager.receiveSocket(overflow);
+            assertTrue(overflow.closed);
+            assertEquals(64, map(manager, "pendingReads").size());
+        } finally { shutdown(manager); }
+    }
+
+    @Test void lateControlCannotBecomeAnInvitationBeforeTheNextTick() throws Exception {
+        var clock = new java.util.concurrent.atomic.AtomicLong();
+        var manager = new ForwardingManager(clock::get);
+        manager.load(directory);
+        var stream = new KryptSocket();
+        try {
+            manager.receiveControlSocket(stream);
+            clock.set(TimeUnit.SECONDS.toNanos(30));
+            stream.feed.write(invite().encode()); stream.feed.close();
+            awaitClosed(stream);
+            assertTrue(map(manager, "invitations").isEmpty());
+        } finally { shutdown(manager); }
+    }
+
+    @Test void lateAuthorizedTunnelHeaderCannotConnectToTheTargetBeforeTheNextTick() throws Exception {
+        var clock = new java.util.concurrent.atomic.AtomicLong();
+        var manager = new ForwardingManager(clock::get);
+        manager.load(directory);
+        var stream = new KryptSocket();
+        try (var target = LoopbackTcp.listen(0)) {
+            ControlPacket invitation = invite();
+            manager.receiveControl("Bob", invitation.encode());
+            assertEquals(1, manager.accept(invitation.invitationId().toString(), target.getLocalPort()));
+            manager.receiveSocket(stream);
+            clock.set(TimeUnit.SECONDS.toNanos(30));
+            writeTunnelHeader(stream, invitation.routeId());
+            awaitClosed(stream);
+            target.setSoTimeout(200);
+            assertThrows(java.net.SocketTimeoutException.class, target::accept);
+        } finally { shutdown(manager); }
+    }
+
+    @Test void establishedTunnelIsNotSubjectToTheHeaderDeadline() throws Exception {
+        var clock = new java.util.concurrent.atomic.AtomicLong();
+        var manager = new ForwardingManager(clock::get);
+        manager.load(directory);
+        var stream = new KryptSocket();
+        try (var target = LoopbackTcp.listen(0)) {
+            ControlPacket invitation = invite();
+            manager.receiveControl("Bob", invitation.encode());
+            assertEquals(1, manager.accept(invitation.invitationId().toString(), target.getLocalPort()));
+            writeTunnelHeader(stream, invitation.routeId());
+            manager.receiveSocket(stream);
+            assertTrue(stream.handshake.await(3, TimeUnit.SECONDS));
+            target.setSoTimeout(3000);
+            try (var service = target.accept()) {
+                clock.set(TimeUnit.MINUTES.toNanos(10));
+                manager.tick();
+                assertFalse(stream.closed);
+                assertTrue(map(manager, "pendingReads").isEmpty());
+                manager.revoke(invitation.routeId().toString());
+                assertTrue(stream.closed);
+            }
+        } finally { shutdown(manager); }
+    }
+
+    @Test void rejectedTunnelWaitingForPeerEofStillReleasesPendingCapacityAtDeadline() throws Exception {
+        var clock = new java.util.concurrent.atomic.AtomicLong();
+        var manager = new ForwardingManager(clock::get);
+        manager.load(directory);
+        var stream = new KryptSocket();
+        try {
+            writeTunnelHeader(stream, UUID.randomUUID());
+            manager.receiveSocket(stream);
+            assertTrue(stream.handshake.await(3, TimeUnit.SECONDS));
+            assertArrayEquals(new byte[]{2}, stream.output.toByteArray());
+            assertEquals(1, map(manager, "pendingReads").size());
+            clock.set(TimeUnit.SECONDS.toNanos(30));
+            manager.tick();
+            assertTrue(stream.closed);
+            assertTrue(map(manager, "pendingReads").isEmpty());
+        } finally { shutdown(manager); }
+    }
+
+    @Test void controlQueuedBeforeDisconnectCannotCreateAnOfferAfterDisconnect() throws Exception {
+        var manager = manager();
+        var client = net.minecraft.client.Minecraft.getInstance();
+        var stream = new KryptSocket();
+        try {
+            client.delayTasks = true;
+            stream.feed.write(invite().encode()); stream.feed.close();
+            manager.receiveControlSocket(stream);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            while (client.queuedTasks.isEmpty() && System.nanoTime() < deadline) Thread.sleep(5);
+            assertFalse(client.queuedTasks.isEmpty());
+            manager.disconnect();
+            client.delayTasks = false;
+            client.runQueuedTasks();
+            assertTrue(map(manager, "invitations").isEmpty());
+            assertTrue(stream.closed);
+        } finally {
+            client.delayTasks = false;
+            client.runQueuedTasks();
+            shutdown(manager);
+        }
+    }
+
+    private static void writeTunnelHeader(KryptSocket stream, UUID routeId) throws Exception {
+        var header = new DataOutputStream(stream.feed);
+        header.writeLong(0x4B30344D5354524DL); header.writeByte(2);
+        header.writeLong(routeId.getMostSignificantBits()); header.writeLong(routeId.getLeastSignificantBits());
+        header.flush();
+    }
+
+    private static void awaitClosed(KryptSocket stream) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (!stream.closed && System.nanoTime() < deadline) Thread.sleep(5);
+        assertTrue(stream.closed);
+    }
+
     @Test void unrelatedRevocationDoesNotWriteRouteStore() throws Exception {
         ForwardingManager manager = manager();
         try {

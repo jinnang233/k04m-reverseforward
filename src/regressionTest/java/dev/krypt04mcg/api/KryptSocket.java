@@ -11,8 +11,11 @@ public class KryptSocket {
     public final CountDownLatch handshake = new CountDownLatch(1);
     public volatile boolean closed;
     private volatile boolean outputEnded;
+    private final String peer;
 
-    public KryptSocket() {
+    public KryptSocket() { this("Bob"); }
+    public KryptSocket(String peer) {
+        this.peer = peer;
         try { feed = new PipedOutputStream(input); }
         catch (IOException error) { throw new RuntimeException(error); }
     }
@@ -37,7 +40,7 @@ public class KryptSocket {
     private static void requireWorker() throws IOException {
         if (net.minecraft.client.Minecraft.getInstance().isSameThread()) throw new IOException("Use an I/O worker");
     }
-    public String peer() { return "Bob"; }
+    public String peer() { return peer; }
     public boolean isClosed() { return closed; }
     public int writableBytes() { return 1024 * 1024; }
     public boolean isFailed() { return closed; }

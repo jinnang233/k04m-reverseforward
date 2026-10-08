@@ -65,6 +65,14 @@ evicting existing offers. A pending invitation ID keeps its original sender, rou
 port. Duplicate packets cannot replace those details or extend the deadline; changed offers
 must use a new invitation ID.
 
+Incoming control messages and tunnel setup share a limit of 64 pending requests, with
+at most 16 per player (ignoring name case), also subject to the core API's channel pool.
+Control messages must finish with authenticated EOF, and tunnel requests must finish their
+authorization header, within 30 seconds of admission. More bytes do not extend this deadline.
+Excess or expired requests are closed; disconnecting cancels pending readers and queued
+control actions. Established tunnels keep the existing eight-connections-per-route limit
+and stream lifecycle; they are not closed merely because 30 seconds have elapsed.
+
 ### Example
 
 Alice runs:
