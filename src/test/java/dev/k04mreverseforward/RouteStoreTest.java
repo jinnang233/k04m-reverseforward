@@ -4,14 +4,79 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermission;
+import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class RouteStoreTest {
     @TempDir
     Path temporaryDirectory;
+
+    @Test void fixedTemporarySymlinkCannotOverwriteAnotherFile() throws Exception {
+        Path victim = temporaryDirectory.resolve("unrelated.txt");
+        Files.writeString(victim, "keep me");
+        Path config = Files.createDirectory(temporaryDirectory.resolve("config"));
+        createLink(config.resolve("routes.dat.tmp"), victim);
+        new RouteStore(config).save(List.of(), List.of());
+        assertEquals("keep me", Files.readString(victim));
+        assertTrue(Files.isSymbolicLink(config.resolve("routes.dat.tmp")));
+    }
+
+    @Test void linkedAuthorizationFilesCannotBeLoadedOrReplaced() throws Exception {
+        Path outside = Files.createDirectory(temporaryDirectory.resolve("outside"));
+        new RouteStore(outside).save(List.of(), List.of());
+        byte[] original = Files.readAllBytes(outside.resolve("routes.dat"));
+        Path config = Files.createDirectory(temporaryDirectory.resolve("config"));
+        createLink(config.resolve("routes.dat"), outside.resolve("routes.dat"));
+        var store = new RouteStore(config);
+        assertThrows(IOException.class, store::load);
+        assertThrows(IOException.class, () -> store.save(List.of(), List.of()));
+        assertArrayEquals(original, Files.readAllBytes(outside.resolve("routes.dat")));
+    }
+
+    @Test void linkedParentAndDanglingAuthorizationFileAreRejected() throws Exception {
+        Path outside = Files.createDirectory(temporaryDirectory.resolve("outside"));
+        Path linkedDirectory = temporaryDirectory.resolve("linked");
+        createLink(linkedDirectory, outside);
+        var linkedStore = new RouteStore(linkedDirectory);
+        assertThrows(IOException.class, linkedStore::load);
+        assertThrows(IOException.class, () -> linkedStore.save(List.of(), List.of()));
+        assertFalse(Files.exists(outside.resolve("routes.dat")));
+        Path config = Files.createDirectory(temporaryDirectory.resolve("config"));
+        createLink(config.resolve("routes.dat"), outside.resolve("missing"));
+        assertThrows(IOException.class, new RouteStore(config)::load);
+    }
+
+    @Test void authorizationDirectoryAndFileAreOwnerOnlyOnSaveAndLoad() throws Exception {
+        assumeTrue(Files.getFileStore(temporaryDirectory).supportsFileAttributeView("posix"));
+        Path config = Files.createDirectory(temporaryDirectory.resolve("config"));
+        Files.setPosixFilePermissions(config, java.util.EnumSet.allOf(PosixFilePermission.class));
+        var store = new RouteStore(config);
+        store.save(List.of(), List.of());
+        Set<PosixFilePermission> directoryPermissions = Set.of(PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE);
+        Set<PosixFilePermission> filePermissions = Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
+        assertEquals(directoryPermissions, Files.getPosixFilePermissions(config));
+        assertEquals(filePermissions, Files.getPosixFilePermissions(config.resolve("routes.dat")));
+        Files.setPosixFilePermissions(config, java.util.EnumSet.allOf(PosixFilePermission.class));
+        Files.setPosixFilePermissions(config.resolve("routes.dat"), java.util.EnumSet.allOf(PosixFilePermission.class));
+        store.load();
+        assertEquals(directoryPermissions, Files.getPosixFilePermissions(config));
+        assertEquals(filePermissions, Files.getPosixFilePermissions(config.resolve("routes.dat")));
+    }
+
+    private static void createLink(Path link, Path target) throws Exception {
+        try { Files.createSymbolicLink(link, target); }
+        catch (UnsupportedOperationException | IOException unavailable) {
+            assumeTrue(false, "Symbolic links unavailable: " + unavailable.getMessage());
+        }
+    }
 
     @Test
     void persistsMappingsAndAuthorizations() throws Exception {

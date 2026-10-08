@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.DataOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -37,12 +38,12 @@ class ForwardingManagerTest {
             assertEquals(1, manager.accept(invitation.invitationId().toString()));
             Path saved = directory.resolve("k04m-reverse-forward/routes.dat");
             byte[] before = Files.readAllBytes(saved);
-            Path temporary = saved.resolveSibling("routes.dat.tmp");
-            Files.writeString(temporary, "untouched");
+            Files.setLastModifiedTime(saved, FileTime.fromMillis(1000));
+            FileTime modifiedBefore = Files.getLastModifiedTime(saved);
             manager.receiveControl("Mallory", reply(invitation, ControlPacket.Type.REVOKE, 8080).encode());
             assertEquals(1, map(manager, "allowedRoutes").size());
             assertArrayEquals(before, Files.readAllBytes(saved));
-            assertEquals("untouched", Files.readString(temporary));
+            assertEquals(modifiedBefore, Files.getLastModifiedTime(saved));
         } finally { shutdown(manager); }
     }
 

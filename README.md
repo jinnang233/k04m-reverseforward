@@ -23,6 +23,12 @@ Suppose Alice wants to expose a connection on her local `127.0.0.1:25570` to a s
 
 Both the listening endpoint and target endpoint are restricted to loopback addresses, so services are not accidentally exposed to the LAN or public internet. Each route supports at most eight concurrent connections. Routes and accepted authorizations are stored in `config/k04m-reverse-forward/routes.dat`; pending invitations are retained for only two minutes and are never written to disk.
 
+The route storage directory and file are restricted to the local owner's access (POSIX
+`700`/`600`, or an owner-only ACL). Symbolic links in the storage path are rejected,
+including dangling links. Saves use a unique private temporary file and an atomic
+replacement where supported; the `routes.dat` format remains compatible. If you previously
+linked this directory or file, migrate its contents into a regular local directory.
+
 ## Requirements
 
 - Minecraft Java 26.3 and Java 25.
