@@ -2,6 +2,9 @@
 
 K04M Reverse Forward is a Minecraft client mod that provides encrypted, authenticated reverse TCP port forwarding between two verified players through `KryptSocket` control and tunnel streams in Krypt04Mcg 0.23.0. It supports both Fabric and NeoForge and is released under the Unlicense.
 
+Current version: **1.3.2** for both loaders. See [CHANGELOG.md](CHANGELOG.md) for
+the invitation, authorization storage, and pending-stream security fixes.
+
 > [!WARNING]
 > This codebase was **generated with AI assistance**. Review the implementation carefully, especially the cryptography, key storage, networking behavior, and dependency configuration, before using it in any real environment.
 >
@@ -34,6 +37,7 @@ linked this directory or file, migrate its contents into a regular local directo
 - Minecraft Java 26.3 and Java 25.
 - Fabric Loader 0.19.5 with Fabric API 0.161.0+26.3, or NeoForge 26.3.0.16-beta.
 - Both players must install this mod and Krypt04Mcg 0.23.0 or later for their respective mod loader.
+- Krypt04Mcg 0.27.5 or later and relay plugin 1.8.2 or later are recommended to include their corresponding security fixes.
 - Both players must enable `enableDataApi` in Krypt04Mcg and import/trust each other's public keys as described in the Krypt04Mcg documentation.
 - The server-side relay must support the raw encrypted channel protocol: `krypt04mcg_stream:control` and `krypt04mcg_stream:data/0` through the configured channel count. Legacy relays are incompatible. Concurrent control and tunnel streams share Krypt04Mcg's `apiChannelCount` pool (default 16).
 
@@ -110,8 +114,10 @@ The repository includes a manually triggered `Generate Gradle Wrapper` workflow 
 
 The resulting artifacts are written to:
 
-- `build/libs/k04m-reverse-forward-fabric-1.2.0.jar`
-- `neoforge/build/libs/k04m-reverse-forward-neoforge-1.2.0.jar`
+- `build/libs/k04m-reverse-forward-fabric-1.3.2.jar`
+- `neoforge/build/libs/k04m-reverse-forward-neoforge-1.3.2.jar`
+
+Push an annotated `v1.3.2` tag to run the existing release workflow and publish both loader variants.
 
 ## Security and Operational Limits
 
