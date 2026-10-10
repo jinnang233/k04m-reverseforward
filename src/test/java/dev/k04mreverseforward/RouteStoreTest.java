@@ -18,6 +18,11 @@ class RouteStoreTest {
     @TempDir
     Path temporaryDirectory;
 
+    /**
+     * Verifies that fixed temporary symlink cannot overwrite another file.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void fixedTemporarySymlinkCannotOverwriteAnotherFile() throws Exception {
         Path victim = temporaryDirectory.resolve("unrelated.txt");
         Files.writeString(victim, "keep me");
@@ -28,6 +33,11 @@ class RouteStoreTest {
         assertTrue(Files.isSymbolicLink(config.resolve("routes.dat.tmp")));
     }
 
+    /**
+     * Verifies that linked authorization files cannot be loaded or replaced.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void linkedAuthorizationFilesCannotBeLoadedOrReplaced() throws Exception {
         Path outside = Files.createDirectory(temporaryDirectory.resolve("outside"));
         new RouteStore(outside).save(List.of(), List.of());
@@ -40,6 +50,11 @@ class RouteStoreTest {
         assertArrayEquals(original, Files.readAllBytes(outside.resolve("routes.dat")));
     }
 
+    /**
+     * Verifies that linked parent and dangling authorization file are rejected.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void linkedParentAndDanglingAuthorizationFileAreRejected() throws Exception {
         Path outside = Files.createDirectory(temporaryDirectory.resolve("outside"));
         Path linkedDirectory = temporaryDirectory.resolve("linked");
@@ -53,6 +68,11 @@ class RouteStoreTest {
         assertThrows(IOException.class, new RouteStore(config)::load);
     }
 
+    /**
+     * Verifies that authorization directory and file are owner only on save and load.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void authorizationDirectoryAndFileAreOwnerOnlyOnSaveAndLoad() throws Exception {
         assumeTrue(Files.getFileStore(temporaryDirectory).supportsFileAttributeView("posix"));
         Path config = Files.createDirectory(temporaryDirectory.resolve("config"));
@@ -71,6 +91,13 @@ class RouteStoreTest {
         assertEquals(filePermissions, Files.getPosixFilePermissions(config.resolve("routes.dat")));
     }
 
+    /**
+     * Provides the create link fixture operation used by the route store test regression scenarios.
+     *
+     * @param link the link supplied to this operation
+     * @param target the target supplied to this operation
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     private static void createLink(Path link, Path target) throws Exception {
         try { Files.createSymbolicLink(link, target); }
         catch (UnsupportedOperationException | IOException unavailable) {
@@ -78,6 +105,11 @@ class RouteStoreTest {
         }
     }
 
+    /**
+     * Verifies that persists mappings and authorizations.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test
     void persistsMappingsAndAuthorizations() throws Exception {
         UUID outgoingId = UUID.randomUUID();

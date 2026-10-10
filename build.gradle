@@ -1,3 +1,6 @@
+/**
+ * Loads the build plugins that supply Minecraft integration and artifact tasks.
+ */
 plugins {
     id "net.fabricmc.fabric-loom" version "${loom_version}"
 }
@@ -5,14 +8,23 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 
+/**
+ * Sets artifact naming from the existing project properties.
+ */
 base {
     archivesName = project.archives_base_name
 }
 
+/**
+ * Declares dependency repositories used by the build tool.
+ */
 repositories {
     mavenCentral()
 }
 
+/**
+ * Configures Fabric source sets and loader integration.
+ */
 loom {
     splitEnvironmentSourceSets()
     mods {
@@ -23,12 +35,18 @@ loom {
     }
 }
 
+/**
+ * Defines source roots and compilation boundaries for the indicated environment.
+ */
 sourceSets {
     client {
         java.srcDirs = ["src/common/java", "src/fabric/java"]
     }
 }
 
+/**
+ * Declares external libraries and test dependencies; cryptographic behavior belongs to runtime code.
+ */
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
@@ -41,6 +59,9 @@ dependencies {
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
+/**
+ * Expands build metadata in resources without changing runtime protocol settings.
+ */
 processResources {
     inputs.property "version", project.version
     filesMatching("fabric.mod.json") {
@@ -48,43 +69,67 @@ processResources {
     }
 }
 
+/**
+ * Configures the named build task with the existing compilation, verification or packaging settings.
+ */
 tasks.withType(JavaCompile).configureEach {
     options.release = 25
     options.encoding = "UTF-8"
 }
 
+/**
+ * Configures the Java toolchain compatibility and source artifact generation.
+ */
 java {
     withSourcesJar()
     sourceCompatibility = JavaVersion.VERSION_25
     targetCompatibility = JavaVersion.VERSION_25
 }
 
+/**
+ * Runs the configured tests through the JUnit Platform.
+ */
 test {
     useJUnitPlatform()
 }
 
 // Compile the manager against small API doubles so lifecycle regressions can run
 // without starting Minecraft. Production builds still compile against the real API.
+/**
+ * Defines source roots and compilation boundaries for the indicated environment.
+ */
 sourceSets {
     regressionTest {
         java.srcDirs = ["src/regressionTest/java"]
     }
 }
+/**
+ * Connects dependency scopes used by compilation and regression tests.
+ */
 configurations {
     regressionTestImplementation.extendsFrom testImplementation
     regressionTestRuntimeOnly.extendsFrom testRuntimeOnly
 }
+/**
+ * Configures the named build task with the existing compilation, verification or packaging settings.
+ */
 tasks.named("compileRegressionTestJava", JavaCompile) {
     source files(["ForwardingManager", "ControlPacket", "RouteStore", "LoopbackTcp", "TunnelBridge", "KryptStreams"].collect {
         "src/common/java/dev/k04mreverseforward/${it}.java"
     })
 }
+/**
+ * Configures the named build task with the existing compilation, verification or packaging settings.
+ */
 tasks.register("regressionTest", Test) {
     testClassesDirs = sourceSets.regressionTest.output.classesDirs
     classpath = sourceSets.regressionTest.runtimeClasspath
     useJUnitPlatform()
 }
 
+/**
+ * Configures the named build task with the existing compilation, verification or packaging settings.
+ */
 tasks.register("testIpv6Preference", Test) {
     description = "Verifies IPv4 loopback forwarding when the JVM prefers IPv6."
     testClassesDirs = sourceSets.test.output.classesDirs
@@ -94,11 +139,17 @@ tasks.register("testIpv6Preference", Test) {
     include "**/LoopbackTcpTest.class"
 }
 
+/**
+ * Configures the named build task with the existing compilation, verification or packaging settings.
+ */
 tasks.named("check") {
     dependsOn tasks.named("regressionTest")
     dependsOn tasks.named("testIpv6Preference")
 }
 
+/**
+ * Configures the named build task with the existing compilation, verification or packaging settings.
+ */
 tasks.named("jar") {
     from("LICENSE") {
         rename { "LICENSE_k04m-reverse-forward" }

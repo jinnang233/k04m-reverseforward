@@ -18,8 +18,16 @@ public final class ReverseForward {
     private static final ForwardingManager MANAGER = new ForwardingManager();
     private static boolean initialized;
 
+    /**
+     * Prevents direct instantiation of this stateless utility.
+     */
     private ReverseForward() {}
 
+    /**
+     * Performs the initialize operation for the reverse forward.
+     *
+     * @param configDirectory the directory containing the persisted configuration
+     */
     public static synchronized void initialize(Path configDirectory) {
         if (initialized) return;
         MANAGER.load(configDirectory);
@@ -28,11 +36,21 @@ public final class ReverseForward {
         initialized = true;
     }
 
+    /**
+     * Performs the commands operation for the reverse forward.
+     *
+     * @return the result described above
+     */
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static <S> LiteralArgumentBuilder<S> commands() {
         return (LiteralArgumentBuilder<S>) commandsRaw();
     }
 
+    /**
+     * Performs the commands raw operation for the reverse forward.
+     *
+     * @return the result described above
+     */
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static LiteralArgumentBuilder commandsRaw() {
         return literal("k04mrf")
@@ -80,6 +98,11 @@ public final class ReverseForward {
                 .executes(context -> help());
     }
 
+    /**
+     * Performs the help operation for the reverse forward.
+     *
+     * @return the result described above
+     */
     private static int help() {
         message("Commands: register, invite, accept, deny, start, stop, remove, revoke, list, invitations");
         message("Use /k04mrf register <name> <listenPort> <targetPort>, then /k04mrf invite <name> <player>.");
@@ -87,14 +110,25 @@ public final class ReverseForward {
         return 1;
     }
 
+    /**
+     * Processes the next scheduled work and lifecycle checks for the reverse forward.
+     */
     public static void tick() {
         MANAGER.tick();
     }
 
+    /**
+     * Performs the disconnect operation for the reverse forward.
+     */
     public static void disconnect() {
         MANAGER.disconnect();
     }
 
+    /**
+     * Performs the message operation for the reverse forward.
+     *
+     * @param text the text supplied to this operation
+     */
     static void message(String text) {
         Minecraft client = Minecraft.getInstance();
         if (client == null) return;

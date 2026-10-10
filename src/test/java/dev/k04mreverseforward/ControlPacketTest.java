@@ -10,6 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ControlPacketTest {
+    /**
+     * Verifies that round trips every control type.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test
     void roundTripsEveryControlType() throws Exception {
         for (ControlPacket.Type type : ControlPacket.Type.values()) {
@@ -19,6 +24,9 @@ class ControlPacketTest {
         }
     }
 
+    /**
+     * Verifies that rejects truncated and trailing packets.
+     */
     @Test
     void rejectsTruncatedAndTrailingPackets() {
         ControlPacket packet = new ControlPacket(ControlPacket.Type.INVITE, UUID.randomUUID(), UUID.randomUUID(),
@@ -29,6 +37,9 @@ class ControlPacketTest {
         assertThrows(IOException.class, () -> ControlPacket.decode(trailing));
     }
 
+    /**
+     * Verifies that validates route names and ports.
+     */
     @Test
     void validatesRouteNamesAndPorts() {
         assertThrows(IllegalArgumentException.class, () -> new ControlPacket(ControlPacket.Type.INVITE,
@@ -37,6 +48,11 @@ class ControlPacketTest {
                 UUID.randomUUID(), UUID.randomUUID(), "valid", 0, 4321));
     }
 
+    /**
+     * Verifies that accept packet carries receiver selected target port.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test
     void acceptPacketCarriesReceiverSelectedTargetPort() throws Exception {
         ControlPacket accepted = new ControlPacket(ControlPacket.Type.ACCEPT, UUID.randomUUID(), UUID.randomUUID(),

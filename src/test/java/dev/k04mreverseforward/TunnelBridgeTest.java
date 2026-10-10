@@ -16,6 +16,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @Timeout(10)
 class TunnelBridgeTest {
+    /**
+     * Verifies that half closed request receives complete large response.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void halfClosedRequestReceivesCompleteLargeResponse() throws Exception {
         byte[] request = new byte[200_000];
         byte[] response = new byte[300_000];
@@ -52,6 +57,11 @@ class TunnelBridgeTest {
         }
     }
 
+    /**
+     * Verifies that malformed or truncated frames close the connection.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void malformedOrTruncatedFramesCloseTheConnection() throws Exception {
         for (byte[] frame : new byte[][] {
                 ByteBuffer.allocate(4).putInt(-1).array(),

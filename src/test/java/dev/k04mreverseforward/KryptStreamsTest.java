@@ -10,6 +10,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @Timeout(5)
 class KryptStreamsTest {
+    /**
+     * Verifies that full queue waits then preserves bytes.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void fullQueueWaitsThenPreservesBytes() throws Exception {
         KryptSocket socket = socket();
         socket.getOutputStream().write(new byte[KryptSocket.MAX_BUFFERED_BYTES]);
@@ -23,6 +28,11 @@ class KryptStreamsTest {
         }
     }
 
+    /**
+     * Verifies that finish waits for queued bytes and both ends.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void finishWaitsForQueuedBytesAndBothEnds() throws Exception {
         KryptSocket socket = socket();
         socket.getOutputStream().write(new byte[] {42});
@@ -41,6 +51,11 @@ class KryptStreamsTest {
         }
     }
 
+    /**
+     * Verifies that cancellation unblocks paced writer.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void cancellationUnblocksPacedWriter() throws Exception {
         KryptSocket socket = socket();
         socket.getOutputStream().write(new byte[KryptSocket.MAX_BUFFERED_BYTES]);
@@ -53,6 +68,11 @@ class KryptStreamsTest {
         }
     }
 
+    /**
+     * Provides the socket fixture operation used by the krypt streams test regression scenarios.
+     *
+     * @return the result described above
+     */
     private static KryptSocket socket() {
         return new KryptSocket("Bob", "test:tunnel", UUID.randomUUID());
     }

@@ -13,8 +13,28 @@ final class TunnelBridge {
     static final int MAX_FRAME = 16 * 1024;
 
     @FunctionalInterface
-    interface FrameWriter { void write(byte[] frame) throws Exception; }
+    interface FrameWriter {
+        /**
+         * Writes one already-framed tunnel record to the encrypted API stream. Implementations must respect
+         * output backpressure and propagate failure; successful queueing is not remote consumption.
+         *
+         * @param frame the frame supplied to this operation
+         * @throws Exception if the delegated operation cannot complete successfully
+         */
+        void write(byte[] frame) throws Exception; }
 
+    /**
+     * Starts independent TCP-to-encrypted and encrypted-to-TCP workers using bounded length-prefixed
+     * frames. A zero-length frame means EOF for one direction and triggers TCP output half-close, allowing
+     * the other direction to finish. Negative/oversized/truncated frames fail; any failure cancels both
+     * workers and closes TCP, while normal completion waits for both directions.
+     *
+     * @param tcp the tcp supplied to this operation
+     * @param encryptedInput the encrypted input supplied to this operation
+     * @param writer the writer supplied to this operation
+     * @param workers the workers supplied to this operation
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     static void run(Socket tcp, InputStream encryptedInput, FrameWriter writer,
                     ExecutorService workers) throws Exception {
         var completion = new ExecutorCompletionService<Void>(workers);
@@ -56,5 +76,8 @@ final class TunnelBridge {
         }
     }
 
+    /**
+     * Prevents direct instantiation of this stateless utility.
+     */
     private TunnelBridge() {}
 }

@@ -11,6 +11,11 @@ import java.net.Socket;
 import static org.junit.jupiter.api.Assertions.*;
 
 class LoopbackTcpTest {
+    /**
+     * Verifies that listener accepts ipv4 connections.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test
     void listenerAcceptsIpv4Connections() throws Exception {
         try (ServerSocket server = LoopbackTcp.listen(0)) {
@@ -27,6 +32,11 @@ class LoopbackTcpTest {
         }
     }
 
+    /**
+     * Verifies that target connects to ipv4 only service.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test
     void targetConnectsToIpv4OnlyService() throws Exception {
         try (ServerSocket service = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"));
@@ -41,6 +51,11 @@ class LoopbackTcpTest {
         }
     }
 
+    /**
+     * Verifies that occupied port fails and can be retried after release.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test
     void occupiedPortFailsAndCanBeRetriedAfterRelease() throws Exception {
         int port;

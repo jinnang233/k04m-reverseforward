@@ -1,3 +1,6 @@
+/**
+ * Loads the build plugins that supply Minecraft integration and artifact tasks.
+ */
 plugins {
     id "java-library"
     id "net.neoforged.moddev" version "${moddev_version}"
@@ -6,16 +9,25 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 
+/**
+ * Sets artifact naming from the existing project properties.
+ */
 base {
     archivesName = project.archives_base_name
 }
 
+/**
+ * Declares dependency repositories used by the build tool.
+ */
 repositories {
     mavenCentral()
 }
 
 sourceSets.main.java.srcDir("../src/common/java")
 
+/**
+ * Declares external libraries and test dependencies; cryptographic behavior belongs to runtime code.
+ */
 dependencies {
     compileOnly files("../libs/Krypt04Mcg.jar")
 }
@@ -32,17 +44,26 @@ neoForge {
     }
 }
 
+/**
+ * Configures the named build task with the existing compilation, verification or packaging settings.
+ */
 tasks.withType(JavaCompile).configureEach {
     options.release = 25
     options.encoding = "UTF-8"
 }
 
+/**
+ * Configures the Java toolchain compatibility and source artifact generation.
+ */
 java {
     withSourcesJar()
     sourceCompatibility = JavaVersion.VERSION_25
     targetCompatibility = JavaVersion.VERSION_25
 }
 
+/**
+ * Expands build metadata in resources without changing runtime protocol settings.
+ */
 processResources {
     inputs.property "version", project.version
     filesMatching("META-INF/neoforge.mods.toml") {
@@ -50,6 +71,9 @@ processResources {
     }
 }
 
+/**
+ * Configures the named build task with the existing compilation, verification or packaging settings.
+ */
 tasks.named("jar") {
     from("../LICENSE") {
         rename { "LICENSE_k04m-reverse-forward" }

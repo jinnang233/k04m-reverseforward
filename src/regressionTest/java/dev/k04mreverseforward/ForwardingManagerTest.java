@@ -21,6 +21,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class ForwardingManagerTest {
     @TempDir Path directory;
 
+    /**
+     * Verifies that slow tunnel header cannot extend its deadline.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void slowTunnelHeaderCannotExtendItsDeadline() throws Exception {
         var clock = new java.util.concurrent.atomic.AtomicLong();
         var manager = new ForwardingManager(clock::get);
@@ -40,6 +45,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that complete control without eof expires and new control can be accepted.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void completeControlWithoutEofExpiresAndNewControlCanBeAccepted() throws Exception {
         var clock = new java.util.concurrent.atomic.AtomicLong();
         var manager = new ForwardingManager(clock::get);
@@ -66,6 +76,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that disconnect cancels pending control and tunnel readers.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void disconnectCancelsPendingControlAndTunnelReaders() throws Exception {
         var manager = manager();
         var control = new KryptSocket();
@@ -81,6 +96,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that a peer cannot reserve more than sixteen pending readers across both channels.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void aPeerCannotReserveMoreThanSixteenPendingReadersAcrossBothChannels() throws Exception {
         var manager = manager();
         try {
@@ -96,6 +116,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that pending reader capacity is bounded across peers.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void pendingReaderCapacityIsBoundedAcrossPeers() throws Exception {
         var manager = manager();
         try {
@@ -111,6 +136,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that late control cannot become an invitation before the next tick.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void lateControlCannotBecomeAnInvitationBeforeTheNextTick() throws Exception {
         var clock = new java.util.concurrent.atomic.AtomicLong();
         var manager = new ForwardingManager(clock::get);
@@ -125,6 +155,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that late authorized tunnel header cannot connect to the target before the next tick.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void lateAuthorizedTunnelHeaderCannotConnectToTheTargetBeforeTheNextTick() throws Exception {
         var clock = new java.util.concurrent.atomic.AtomicLong();
         var manager = new ForwardingManager(clock::get);
@@ -143,6 +178,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that established tunnel is not subject to the header deadline.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void establishedTunnelIsNotSubjectToTheHeaderDeadline() throws Exception {
         var clock = new java.util.concurrent.atomic.AtomicLong();
         var manager = new ForwardingManager(clock::get);
@@ -167,6 +207,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that rejected tunnel waiting for peer eof still releases pending capacity at deadline.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void rejectedTunnelWaitingForPeerEofStillReleasesPendingCapacityAtDeadline() throws Exception {
         var clock = new java.util.concurrent.atomic.AtomicLong();
         var manager = new ForwardingManager(clock::get);
@@ -185,6 +230,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that control queued before disconnect cannot create an offer after disconnect.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void controlQueuedBeforeDisconnectCannotCreateAnOfferAfterDisconnect() throws Exception {
         var manager = manager();
         var client = net.minecraft.client.Minecraft.getInstance();
@@ -208,6 +258,14 @@ class ForwardingManagerTest {
         }
     }
 
+    /**
+     * Provides the write tunnel header fixture operation used by the forwarding manager test regression
+     * scenarios.
+     *
+     * @param stream the stream supplied to this operation
+     * @param routeId the route id supplied to this operation
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     private static void writeTunnelHeader(KryptSocket stream, UUID routeId) throws Exception {
         var header = new DataOutputStream(stream.feed);
         header.writeLong(0x4B30344D5354524DL); header.writeByte(2);
@@ -215,12 +273,24 @@ class ForwardingManagerTest {
         header.flush();
     }
 
+    /**
+     * Provides the await closed fixture operation used by the forwarding manager test regression
+     * scenarios.
+     *
+     * @param stream the stream supplied to this operation
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     private static void awaitClosed(KryptSocket stream) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (!stream.closed && System.nanoTime() < deadline) Thread.sleep(5);
         assertTrue(stream.closed);
     }
 
+    /**
+     * Verifies that unrelated revocation does not write route store.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void unrelatedRevocationDoesNotWriteRouteStore() throws Exception {
         ForwardingManager manager = manager();
         try {
@@ -230,6 +300,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that revocation from wrong peer leaves authorization and store untouched.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void revocationFromWrongPeerLeavesAuthorizationAndStoreUntouched() throws Exception {
         ForwardingManager manager = manager();
         try {
@@ -247,6 +322,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that duplicate does not refresh deadline and accept rejects expired offer without tick.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void duplicateDoesNotRefreshDeadlineAndAcceptRejectsExpiredOfferWithoutTick() throws Exception {
         var clock = new java.util.concurrent.atomic.AtomicLong();
         ForwardingManager manager = new ForwardingManager(clock::get);
@@ -263,6 +343,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that many peers cannot exceed global invitation limit and deny releases capacity.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void manyPeersCannotExceedGlobalInvitationLimitAndDenyReleasesCapacity() throws Exception {
         ForwardingManager manager = manager();
         try {
@@ -279,6 +364,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that pending invitation cannot be rebound to another sender or local port.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void pendingInvitationCannotBeReboundToAnotherSenderOrLocalPort() throws Exception {
         for (String attacker : new String[]{"Bob", "Mallory"}) {
             ForwardingManager manager = manager();
@@ -298,6 +388,11 @@ class ForwardingManagerTest {
         }
     }
 
+    /**
+     * Verifies that invitation flood is bounded and does not evict another peers offer.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void invitationFloodIsBoundedAndDoesNotEvictAnotherPeersOffer() throws Exception {
         ForwardingManager manager = manager();
         try {
@@ -310,6 +405,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that one peer cannot reserve all pending invitation slots.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void onePeerCannotReserveAllPendingInvitationSlots() throws Exception {
         ForwardingManager manager = manager();
         try {
@@ -321,6 +421,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that stale replies are ignored and acceptance preserves stop.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void staleRepliesAreIgnoredAndAcceptancePreservesStop() throws Exception {
         ForwardingManager manager = manager();
         try {
@@ -345,6 +450,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that overflow does not poison later saves.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void overflowDoesNotPoisonLaterSaves() throws Exception {
         ForwardingManager manager = manager();
         try {
@@ -359,6 +469,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that rejection and revocation invalidate pending acceptance.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void rejectionAndRevocationInvalidatePendingAcceptance() throws Exception {
         ForwardingManager manager = manager();
         try {
@@ -375,6 +490,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that old stream protocol is rejected.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void oldStreamProtocolIsRejected() throws Exception {
         ForwardingManager manager = manager();
         KryptSocket stream = new KryptSocket();
@@ -389,6 +509,11 @@ class ForwardingManagerTest {
         } finally { stream.close(); shutdown(manager); }
     }
 
+    /**
+     * Verifies that failed registration and acceptance roll back.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void failedRegistrationAndAcceptanceRollBack() throws Exception {
         ForwardingManager manager = manager();
         try {
@@ -407,15 +532,57 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that local revoke closes active connection.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void localRevokeClosesActiveConnection() throws Exception { checkClose("local"); }
+    /**
+     * Verifies that remote revoke closes active connection.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void remoteRevokeClosesActiveConnection() throws Exception { checkClose("remote"); }
+    /**
+     * Verifies that disconnect closes active connection.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void disconnectClosesActiveConnection() throws Exception { checkClose("disconnect"); }
+    /**
+     * Verifies that replacing authorization closes old connection.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void replacingAuthorizationClosesOldConnection() throws Exception { checkClose("replace"); }
 
+    /**
+     * Verifies that stop closes outgoing handshake.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void stopClosesOutgoingHandshake() throws Exception { checkOutgoingClose("stop"); }
+    /**
+     * Verifies that remove closes outgoing handshake.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void removeClosesOutgoingHandshake() throws Exception { checkOutgoingClose("remove"); }
+    /**
+     * Verifies that remote revoke closes outgoing handshake.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void remoteRevokeClosesOutgoingHandshake() throws Exception { checkOutgoingClose("revoke"); }
 
+    /**
+     * Provides the check outgoing close fixture operation used by the forwarding manager test regression
+     * scenarios.
+     *
+     * @param action the action supplied to this operation
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     private void checkOutgoingClose(String action) throws Exception {
         ForwardingManager manager = manager();
         try {
@@ -449,6 +616,12 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Provides the check close fixture operation used by the forwarding manager test regression scenarios.
+     *
+     * @param action the action supplied to this operation
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     private void checkClose(String action) throws Exception {
         ForwardingManager manager = manager();
         KryptSocket stream = new KryptSocket();
@@ -489,6 +662,11 @@ class ForwardingManagerTest {
         } finally { stream.close(); shutdown(manager); }
     }
 
+    /**
+     * Verifies that revoked authorization cannot admit late worker.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void revokedAuthorizationCannotAdmitLateWorker() throws Exception {
         ForwardingManager manager = manager();
         try {
@@ -508,6 +686,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that fragmented control waits for eof.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void fragmentedControlWaitsForEof() throws Exception {
         ForwardingManager manager = manager();
         KryptSocket stream = new KryptSocket();
@@ -527,6 +710,11 @@ class ForwardingManagerTest {
         } finally { shutdown(manager); }
     }
 
+    /**
+     * Verifies that invalid control streams are rejected.
+     *
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     @Test void invalidControlStreamsAreRejected() throws Exception {
         for (byte[] bytes : new byte[][] {
                 java.util.Arrays.copyOf(invite().encode(), 12),
@@ -545,26 +733,72 @@ class ForwardingManagerTest {
         }
     }
 
+    /**
+     * Provides the manager fixture operation used by the forwarding manager test regression scenarios.
+     *
+     * @return the result described above
+     */
     private ForwardingManager manager() {
         var manager = new ForwardingManager();
         manager.load(directory);
         return manager;
     }
+    /**
+     * Provides the state fixture operation used by the forwarding manager test regression scenarios.
+     *
+     * @return the result described above
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     private RouteStore.MappingData state() throws Exception {
         return new RouteStore(directory.resolve("k04m-reverse-forward")).load().mappings().getFirst();
     }
+    /**
+     * Provides the invite fixture operation used by the forwarding manager test regression scenarios.
+     *
+     * @return the result described above
+     */
     private static ControlPacket invite() {
         return new ControlPacket(ControlPacket.Type.INVITE, UUID.randomUUID(), UUID.randomUUID(), "in", 25570, 8080);
     }
+    /**
+     * Provides the reply fixture operation used by the forwarding manager test regression scenarios.
+     *
+     * @param invitation the invitation supplied to this operation
+     * @param type the type supplied to this operation
+     * @param port the port supplied to this operation
+     * @return the result described above
+     */
     private static ControlPacket reply(ControlPacket invitation, ControlPacket.Type type, int port) {
         return new ControlPacket(type, invitation.invitationId(), invitation.routeId(), invitation.name(), invitation.listenPort(), port);
     }
+    /**
+     * Provides the field fixture operation used by the forwarding manager test regression scenarios.
+     *
+     * @param target the target supplied to this operation
+     * @param name the name supplied to this operation
+     * @return the result described above
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     private static Object field(Object target, String name) throws Exception {
         var field = target.getClass().getDeclaredField(name);
         field.setAccessible(true);
         return field.get(target);
     }
+    /**
+     * Provides the map fixture operation used by the forwarding manager test regression scenarios.
+     *
+     * @param target the target supplied to this operation
+     * @param name the name supplied to this operation
+     * @return the result described above
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     private static Map<?, ?> map(Object target, String name) throws Exception { return (Map<?, ?>) field(target, name); }
+    /**
+     * Provides the shutdown fixture operation used by the forwarding manager test regression scenarios.
+     *
+     * @param manager the manager supplied to this operation
+     * @throws Exception if the delegated operation cannot complete successfully
+     */
     private static void shutdown(ForwardingManager manager) throws Exception {
         manager.disconnect();
         var workers = (ExecutorService) field(manager, "workers");
