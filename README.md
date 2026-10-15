@@ -2,7 +2,7 @@
 
 K04M Reverse Forward is a Minecraft client mod that provides encrypted, authenticated reverse TCP port forwarding between two verified players through `KryptSocket` control and tunnel streams in Krypt04Mcg 0.23.0. It supports both Fabric and NeoForge and is released under the Unlicense.
 
-Current version: **1.3.3** for both loaders. See [CHANGELOG.md](CHANGELOG.md) for
+Current version: **1.3.4** for both loaders. See [CHANGELOG.md](CHANGELOG.md) for
 the invitation, authorization storage, and pending-stream security fixes.
 
 > [!WARNING]
@@ -35,7 +35,7 @@ linked this directory or file, migrate its contents into a regular local directo
 ## Requirements
 
 - Minecraft Java 26.3 and Java 25.
-- Fabric Loader 0.19.5 with Fabric API 0.162.0+26.3, or NeoForge 26.3.0.77.
+- Fabric Loader 0.19.5 with Fabric API 0.162.0+26.3, or NeoForge 26.3.0.83.
 - Both players must install this mod and Krypt04Mcg 0.23.0 or later for their respective mod loader.
 - Krypt04Mcg 0.29.1 or later and relay plugin 1.9.0 or later are recommended to include their corresponding security fixes.
 - Both players must enable `enableDataApi` in Krypt04Mcg and import/trust each other's public keys as described in the Krypt04Mcg documentation.
